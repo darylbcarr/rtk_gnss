@@ -5,3 +5,5 @@ Provide system architecture, wiring, ESP32 firmware design, GNSS configuration f
 Produce a markdown file with a comprehensive comparison of the Ublox ZED-F9P versions.
 
 Create a comprehensive list/comparison of RTK base resources in North America. Include the process to access the features and provide cost structures of paid services. But, concentrate on no cost services.
+
+Can you give me a report on available ZED-F9P-04B development modules

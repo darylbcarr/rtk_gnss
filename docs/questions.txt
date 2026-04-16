@@ -14,3 +14,10 @@ Would it be possible to test most functionality with a cheaper GPS module or is 
     https://www.digikey.com/en/products/detail/u-blox/ZED-F9P-05B/24708221
     https://content.u-blox.com/sites/default/files/documents/ZED-F9P-05B_DataSheet_UBXDOC-963802114-12824.pdf
     Cheapest variant: https://www.lcsc.com/product-detail/C5120257.html (Chinese company). It looks to me like the u-blox ZED-F9P-04B is the likeliest version for this project. What do you think?
+
+I found a ZED-F9P-02B board for $80 we could test with... https://www.alibaba.com/product-detail/For-ZED-F9P-02B-00-RTK_1601411555613.html
+And ZED-F9P-04B... 
+https://www.alibaba.com/product-detail/ZED-F9P-RTK-GNSS-Module-Wireless_1601738199851.html
+https://www.alibaba.com/product-detail/ZED-F9P-04B-High-Precision-RTK_1601378715989.html
+https://www.alibaba.com/product-detail/GPS-Module-ZED-F9P-ZED-F9P_1601522405915.html This one has a good reputation on Alibaba.
+
