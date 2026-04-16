@@ -1,0 +1,16 @@
+How does the base get its cm quality location? I can see how a 'permanent' base station would be defined.
+
+I am assuming you don't need the 'moving base' feature?
+
+What is the purpose of the cameras on some of the more expensive versions?
+
+What kind of I/O do the stations require? How complex are the local functions or does most of the control occur through the app/web interface?
+
+Since these are primarily battery powered how much effort should be used to maximize batter life?
+
+How importante are the 'multi-band' L1/L2 or L1/l5?
+
+Would it be possible to test most functionality with a cheaper GPS module or is the functionality in the ZED-F9P too extensive?
+    https://www.digikey.com/en/products/detail/u-blox/ZED-F9P-05B/24708221
+    https://content.u-blox.com/sites/default/files/documents/ZED-F9P-05B_DataSheet_UBXDOC-963802114-12824.pdf
+    Cheapest variant: https://www.lcsc.com/product-detail/C5120257.html (Chinese company). It looks to me like the u-blox ZED-F9P-04B is the likeliest version for this project. What do you think?
