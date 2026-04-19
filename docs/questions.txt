@@ -132,3 +132,10 @@ For a new project with two identical interchangeable base/rover devices, I would
 	•	Default workflow: rover + WISCORS/NTRIP
 	•	Fallback workflow: one local base + one rover
 	•	Focus heavily on antenna quality, correction link, and stakeout UI
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+4/19/2026 3:43 p.m.
+
+Another possible hardware addition would be tilt compensation IMU (inertial measurement unit) BNO085 IMU sensor. 
