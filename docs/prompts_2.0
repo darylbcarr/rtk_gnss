@@ -1,0 +1,361 @@
+You are a geospatial systems architect, GNSS engineer, and professional survey software developer. Help me design and implement a complete survey-grade GNSS data collection system including hardware, Android software, coordinate transformation engine, and geodatabase integration.
+
+## Context
+
+I am a professional surveyor building a custom system capable of real-world survey workflows (control, construction, and general survey data collection). The system must behave like a professional survey controller while remaining flexible and transparent.
+
+---
+
+# 🎯 Core Goals
+
+* Build a GNSS RTK rover/base system (DIY hardware acceptable)
+* Develop an Android app (Kotlin) for field data collection
+* Achieve centimeter-level accuracy suitable for survey work
+* Support BOTH:
+
+  1. Grid-based workflows (CORS / NAD83 State Plane)
+  2. Local/site calibration workflows (ground or assumed coordinates)
+* Integrate with ArcGIS geodatabases for data import/export
+
+---
+
+# 🧭 Coordinate System Requirements (Non-Negotiable)
+
+## Reference Frames
+
+* Maintain raw GNSS coordinates in:
+
+  * WGS84 / ITRF (authoritative source)
+* Support transformation to:
+
+  * NAD83(2011)
+
+## Projection
+
+* Support State Plane Coordinate System (correct zones, units)
+* Support UTM and Web Mercator (optional)
+
+## Vertical
+
+* Store:
+
+  * Ellipsoidal height
+  * Orthometric height
+* Apply geoid model:
+
+  * GEOID18 (or equivalent)
+
+## Transformation Rules
+
+* Use explicit, deterministic pipelines (no “best available”)
+* Use PROJ (or equivalent)
+* Never rely on implicit or hidden transformations
+
+---
+
+# 🔄 Dual Coordinate Framework (Critical Design)
+
+The system must support TWO simultaneous coordinate systems:
+
+## 1. Global/Grid System
+
+* NAD83(2011) State Plane
+* Derived from GNSS via transformation pipeline
+* This is the authoritative published coordinate system
+
+## 2. Local System (Site Calibration)
+
+* Derived from grid coordinates via localization
+* Implement Helmert transformation:
+
+  * Translation
+  * Rotation
+  * Scale
+* Must:
+
+  * Be applied AFTER projection
+  * Store transformation parameters
+  * Store residuals and RMS error
+
+---
+
+# 🧱 Data Integrity Model
+
+Every observation must store THREE layers:
+
+1. Raw GNSS
+
+   * Lat / Lon / h
+   * Epoch time
+   * GNSS frame (WGS84/ITRF)
+
+2. RTK Solution
+
+   * Fix type (FIX, FLOAT, etc.)
+   * Accuracy estimates
+   * Base reference
+
+3. Final Coordinates
+
+   * Grid (State Plane)
+   * Local (if applicable)
+
+All transformations must be reproducible.
+
+---
+
+# 🛰️ GNSS Hardware System
+
+## Rover + Base Capability
+
+* Same device can operate as:
+
+  * Rover (receiving corrections)
+  * Base (broadcasting corrections)
+
+## GNSS Requirements
+
+* Multi-band receiver (L1/L2/L5 preferred)
+* Survey-grade antenna
+* Stable phase center
+
+## Communications
+
+Support:
+
+* NTRIP (via Android device)
+* Radio link (base ↔ rover):
+
+  * Bluetooth
+  * LoRa
+  * UHF (400–470 MHz)
+
+## Processing Unit
+
+* Microcontroller (e.g., ESP32)
+* Handles:
+
+  * GNSS communication
+  * RTCM corrections
+  * Data streaming to Android app
+
+---
+
+# 📱 Android App Requirements (Kotlin)
+
+## Architecture
+
+* Modular design (MVVM or similar)
+* Real-time data processing pipeline
+
+---
+
+## GNSS Integration
+
+* Connect via Bluetooth/USB
+* Parse:
+
+  * NMEA and/or UBX
+* Process:
+
+  * Position
+  * Fix status
+  * Accuracy
+  * Satellite data
+
+---
+
+## Coordinate Engine
+
+* Maintain raw GNSS coordinates
+* Use PROJ for:
+
+  * Datum transformations
+  * Projection
+* Apply geoid model (GEOID18)
+* Support Spatial Reference Profiles:
+
+  * Datum
+  * Projection (EPSG)
+  * Vertical datum
+  * Units
+  * Transformation pipeline
+
+---
+
+## Localization (Site Calibration)
+
+* User defines control points:
+
+  * Known local coordinates
+  * Observed GNSS coordinates
+* Compute best-fit Helmert transform
+* Display:
+
+  * Residuals
+  * RMS error
+* Apply transformation to all points
+
+---
+
+## Field Workflow
+
+### Job Setup
+
+* Define spatial reference profile
+* Select coordinate system
+* Configure base/rover
+
+---
+
+### Real-Time Survey Screen
+
+Display:
+
+* Fix status (RTK FIX/FLOAT)
+* Horizontal/vertical precision
+* Grid coordinates
+* Local coordinates (if enabled)
+
+---
+
+### Point Collection
+
+* RTK FIX enforcement (configurable)
+* Averaging (time/epoch-based)
+* Store full metadata
+
+---
+
+### QA/QC Tools
+
+* Control checks
+* Repeat shots
+* Residual analysis
+
+---
+
+# 🗄️ Data Storage
+
+* Local database (Room or similar)
+
+* Store:
+
+  * Raw GNSS
+  * RTK solution
+  * Final coordinates
+  * Metadata
+  * Localization parameters
+
+* Must support reprocessing
+
+---
+
+# 🗺️ ArcGIS Geodatabase Integration
+
+Use:
+
+* ArcGIS Maps SDK for Kotlin (preferred)
+
+---
+
+## Supported Formats
+
+1. Mobile Geodatabase (.geodatabase) — primary
+2. File Geodatabase (.gdb) — read support
+3. Shapefile — fallback only
+
+---
+
+## Import
+
+* Read feature classes:
+
+  * Points, lines, polygons
+* Read spatial reference
+* Detect:
+
+  * Datum
+  * Projection
+* If missing CRS:
+
+  * Prompt user
+* Transform into job coordinate system using PROJ
+* Preserve:
+
+  * Geometry precision
+  * Curves (if supported)
+  * Attributes
+
+---
+
+## Export
+
+* Export to:
+
+  * Mobile geodatabase
+  * Shapefile (fallback)
+* Write full coordinate system definition
+* Preserve:
+
+  * Geometry
+  * Attributes
+  * Precision
+
+---
+
+## Geometry Rules
+
+* Preserve true curves in geodatabases
+* Densify ONLY when exporting to shapefile
+* Avoid unnecessary geometry changes
+
+---
+
+# 🔄 Transformation Pipeline
+
+All coordinate transformations must follow:
+
+WGS84/ITRF
+→ Datum Transform (to NAD83(2011))
+→ Projection (State Plane)
+→ Vertical Transform (Geoid)
+→ Localization (optional)
+
+Always transform from authoritative source coordinates.
+
+---
+
+# 📦 Deliverables Required
+
+Provide detailed, actionable outputs:
+
+1. Full system architecture (hardware + software)
+2. GNSS RTK data flow (end-to-end)
+3. Android app architecture and modules
+4. Kotlin data models and processing pipeline
+5. Coordinate transformation pipeline (with EPSG examples)
+6. PROJ integration strategy
+7. Geoid model handling (GEOID18)
+8. Localization math (Helmert + least squares)
+9. Geodatabase integration approach
+10. UI/UX design for survey workflows
+11. QA/QC and validation strategy
+12. Common failure points and mitigation
+13. Step-by-step implementation roadmap
+
+---
+
+# ⚠️ Constraints
+
+* Assume professional survey accuracy requirements
+* Do NOT oversimplify geodetic concepts
+* Avoid black-box solutions without explanation
+* Prioritize correctness, traceability, and reproducibility
+
+---
+
+# 🧠 Tone
+
+Be highly technical, precise, and implementation-focused.
+Design a real, working system—not a theoretical overview.
