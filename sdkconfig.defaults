@@ -1,0 +1,5 @@
+# Disable the USB-OTG stack to save flash/RAM.
+# NOTE: GPIO 15-20 remain reserved by the USB Serial/JTAG peripheral
+# (used for idf.py monitor) regardless of this setting.  Use GPIO 14
+# for UART TX — it is the first pin below that reserved range.
+CONFIG_TINYUSB_ENABLED=n

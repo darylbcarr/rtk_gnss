@@ -1,0 +1,39 @@
+menu "RTK GNSS"
+
+config WIFI_SSID
+    string "WiFi SSID"
+    default "myssid"
+
+config WIFI_PASSWORD
+    string "WiFi password"
+    default "mypassword"
+
+config NTRIP_HOST
+    string "NTRIP caster host"
+    default "caster.rtk2go.com"
+
+config NTRIP_PORT
+    int "NTRIP caster port"
+    default 2101
+    range 1 65535
+
+config NTRIP_MOUNTPOINT
+    string "NTRIP mountpoint"
+    default ""
+
+config NTRIP_USER
+    string "NTRIP username (email address for RTK2go)"
+    default ""
+    help
+        For RTK2go, enter your email address here. RTK2go requires a valid
+        email as the username and will disconnect clients that do not provide one.
+        No registration is needed — the email is only used for problem notifications.
+
+config NTRIP_PASSWORD
+    string "NTRIP password (use 'none' for RTK2go)"
+    default "none"
+    help
+        For RTK2go, enter 'none' — the password field is ignored by their caster.
+        For other casters, enter the actual password.
+
+endmenu
