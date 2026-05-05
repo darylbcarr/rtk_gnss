@@ -1,0 +1,29 @@
+ZED-Z9P
+    ZED-Z9P-04B
+    https://www.alibaba.com/product-detail/GPS-Module-ZED-F9P-ZED-F9P_1601522405915.html
+    https://www.alibaba.com/product-detail/ZED-F9P-04B-High-Precision-RTK_1601378715989.html
+    https://www.alibaba.com/product-detail/ZED-F9P-RTK-GNSS-Module-Wireless_1601738199851.html
+
+
+MCU
+    ESP-32-S3
+
+Antenna
+
+SD Card
+
+Battery control
+
+Battery
+
+LoRa
+    Ebyte E22
+
+Display/Buttons
+
+Case
+
+
+
+
+

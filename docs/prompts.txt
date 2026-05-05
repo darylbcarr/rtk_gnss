@@ -7,3 +7,5 @@ Produce a markdown file with a comprehensive comparison of the Ublox ZED-F9P ver
 Create a comprehensive list/comparison of RTK base resources in North America. Include the process to access the features and provide cost structures of paid services. But, concentrate on no cost services.
 
 Can you give me a report on available ZED-F9P-04B development modules
+
+I have a ZED-F9P-o4b-01 module connected to an ESP32-S3 on TX1: GPIO18, RX1: GPIO17. Please create a component and test main to get started.

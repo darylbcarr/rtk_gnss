@@ -1,0 +1,143 @@
+Monitor output: 
+I (680) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us
+I (690) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (700) wifi:AP's beacon interval = 102400 us, DTIM period = 1
+I (740) wifi:<ba-add>idx:0 (ifx:0, a8:6e:84:14:e8:7a), tid:0, ssn:0, winSize:64
+I (1750) esp_netif_handlers: sta ip: 192.168.50.135, mask: 255.255.255.0, gw: 192.168.50.1
+I (1750) app: WiFi connected
+I (1750) uart: ALREADY NULL
+I (1760) gnss: ZED-F9P detected at 460800 baud
+I (1760) gnss: Bidirectional comms confirmed at 460800 baud
+I (1760) gnss: GNSS ready — UBX NAV-PVT @ 1 Hz
+I (1760) ntrip: connecting to 3.143.243.81:2101/tremont
+I (2430) app: 3D  lat=40.9789425 lon=-90.3690604 alt=232.04m  hAcc=10.271m vAcc=28.015m  sv=6 pdop=4.1
+I (3430) app: 3D  lat=40.9789413 lon=-90.3690591 alt=232.45m  hAcc=10.077m vAcc=27.634m  sv=6 pdop=4.1
+I (3900) ntrip: RTCM stream active — 3.143.243.81/tremont
+I (4600) app: 3D  lat=40.9789395 lon=-90.3690572 alt=233.32m  hAcc=9.896m vAcc=27.260m  sv=6 pdop=4.1
+I (5490) app: 3D  lat=40.9789377 lon=-90.3690558 alt=233.68m  hAcc=9.728m vAcc=26.910m  sv=6 pdop=4.1
+I (6520) app: 3D  lat=40.9789361 lon=-90.3690546 alt=233.93m  hAcc=9.571m vAcc=26.586m  sv=6 pdop=4.1
+W (7010) ntrip: caster closed connection
+I (7010) ntrip: reconnecting in 5 s…
+I (7430) app: 3D  lat=40.9789354 lon=-90.3690534 alt=234.30m  hAcc=9.427m vAcc=26.294m  sv=6 pdop=4.1
+I (8430) app: 3D  lat=40.9789344 lon=-90.3690523 alt=234.77m  hAcc=9.279m vAcc=26.007m  sv=6 pdop=4.1
+I (9430) app: 3D  lat=40.9789337 lon=-90.3690520 alt=234.59m  hAcc=9.138m vAcc=25.710m  sv=6 pdop=4.1
+I (10440) app: 3D  lat=40.9789328 lon=-90.3690525 alt=234.06m  hAcc=8.843m vAcc=25.228m  sv=7 pdop=3.3
+I (11430) app: 3D  lat=40.9789320 lon=-90.3690527 alt=233.75m  hAcc=8.573m vAcc=24.797m  sv=7 pdop=3.3
+I (12010) ntrip: connecting to 3.143.243.81:2101/tremont
+I (12430) app: 3D  lat=40.9789315 lon=-90.3690520 alt=233.95m  hAcc=8.299m vAcc=24.316m  sv=7 pdop=3.3
+I (13430) app: 3D  lat=40.9789320 lon=-90.3690524 alt=233.38m  hAcc=8.044m vAcc=23.911m  sv=7 pdop=3.3
+I (14240) ntrip: RTCM stream active — 3.143.243.81/tremont
+I (14490) app: 3D  lat=40.9789328 lon=-90.3690521 alt=233.31m  hAcc=7.816m vAcc=23.521m  sv=7 pdop=3.3
+I (15550) app: 3D  lat=40.9789343 lon=-90.3690514 alt=233.68m  hAcc=7.615m vAcc=23.178m  sv=7 pdop=3.3
+I (16510) app: 3D  lat=40.9789362 lon=-90.3690509 alt=234.02m  hAcc=7.423m vAcc=22.819m  sv=7 pdop=3.3
+W (17330) ntrip: caster closed connection
+I (17330) ntrip: reconnecting in 5 s…
+I (17430) app: 3D  lat=40.9789379 lon=-90.3690504 alt=234.72m  hAcc=7.247m vAcc=22.485m  sv=7 pdop=3.3
+I (18430) app: 3D  lat=40.9789399 lon=-90.3690502 alt=235.24m  hAcc=7.081m vAcc=22.178m  sv=7 pdop=3.3
+I (19430) app: 3D  lat=40.9789413 lon=-90.3690499 alt=235.66m  hAcc=6.934m vAcc=21.901m  sv=7 pdop=3.3
+I (20440) app: 3D  lat=40.9789422 lon=-90.3690501 alt=235.82m  hAcc=6.875m vAcc=21.823m  sv=7 pdop=3.3
+I (21430) app: 3D  lat=40.9789434 lon=-90.3690505 alt=235.98m  hAcc=6.819m vAcc=21.749m  sv=7 pdop=3.3
+I (22330) ntrip: connecting to 3.143.243.81:2101/tremont
+I (22440) app: 3D  lat=40.9789449 lon=-90.3690510 alt=235.94m  hAcc=6.754m vAcc=21.312m  sv=8 pdop=2.7
+I (23360) ntrip: RTCM stream active — 3.143.243.81/tremont
+I (23500) app: 3D  lat=40.9789466 lon=-90.3690516 alt=235.71m  hAcc=6.691m vAcc=20.944m  sv=8 pdop=2.7
+I (24500) app: 3D  lat=40.9789485 lon=-90.3690520 alt=235.55m  hAcc=6.636m vAcc=20.585m  sv=8 pdop=2.7
+I (25500) app: 3D  lat=40.9789503 lon=-90.3690521 alt=235.77m  hAcc=6.582m vAcc=20.255m  sv=8 pdop=2.7
+I (26520) app: 3D  lat=40.9789516 lon=-90.3690522 alt=235.99m  hAcc=6.528m vAcc=19.953m  sv=8 pdop=2.7
+W (27210) ntrip: caster closed connection
+I (27210) ntrip: reconnecting in 5 s…
+I (27440) app: 3D  lat=40.9789528 lon=-90.3690522 alt=236.16m  hAcc=6.481m vAcc=19.638m  sv=8 pdop=2.7
+I (28450) app: 3D  lat=40.9789546 lon=-90.3690517 alt=236.82m  hAcc=6.416m vAcc=19.173m  sv=11 pdop=2.1
+I (29440) app: 3D  lat=40.9789559 lon=-90.3690517 alt=236.77m  hAcc=6.358m vAcc=18.781m  sv=11 pdop=2.1
+I (30440) app: 3D  lat=40.9789575 lon=-90.3690515 alt=237.02m  hAcc=6.292m vAcc=18.274m  sv=12 pdop=1.9
+I (31440) app: 3D  lat=40.9789587 lon=-90.3690512 alt=237.55m  hAcc=6.229m vAcc=17.839m  sv=12 pdop=1.9
+I (32210) ntrip: connecting to 3.143.243.81:2101/tremont
+I (32450) app: 3D  lat=40.9789601 lon=-90.3690505 alt=238.29m  hAcc=6.162m vAcc=17.349m  sv=12 pdop=1.9
+I (32500) ntrip: RTCM stream active — 3.143.243.81/tremont
+I (33520) app: 3D  lat=40.9789615 lon=-90.3690501 alt=238.85m  hAcc=6.098m vAcc=16.909m  sv=12 pdop=1.9
+I (34520) app: 3D  lat=40.9789630 lon=-90.3690496 alt=239.55m  hAcc=6.030m vAcc=16.422m  sv=12 pdop=1.9
+I (35510) app: 3D  lat=40.9789645 lon=-90.3690492 alt=240.37m  hAcc=5.965m vAcc=15.942m  sv=12 pdop=1.9
+W (35590) ntrip: caster closed connection
+I (35590) ntrip: reconnecting in 5 s…
+I (36440) app: 3D  lat=40.9789660 lon=-90.3690488 alt=241.12m  hAcc=5.903m vAcc=15.453m  sv=12 pdop=1.9
+I (37440) app: 3D  lat=40.9789673 lon=-90.3690486 alt=241.87m  hAcc=5.842m vAcc=14.989m  sv=12 pdop=1.9
+I (38440) app: 3D  lat=40.9789686 lon=-90.3690482 alt=242.43m  hAcc=5.785m vAcc=14.588m  sv=12 pdop=1.9
+I (39440) app: 3D  lat=40.9789696 lon=-90.3690481 alt=242.99m  hAcc=5.728m vAcc=14.217m  sv=13 pdop=1.8
+I (40450) app: 3D  lat=40.9789707 lon=-90.3690479 alt=243.47m  hAcc=5.674m vAcc=13.856m  sv=13 pdop=1.8
+I (40590) ntrip: connecting to 3.143.243.81:2101/tremont
+
+
+Analysis:
+
+● Here's what each section of the output means:
+
+  WiFi radio messages (680–740 ms)
+  Internal driver chatter about power-saving setup — beacon interval, block-acknowledgment sessions. Not useful for debugging; just noise.
+
+  Startup (1750–1760 ms)
+  Everything initialised correctly. Note the F9P was detected at 460800 baud this time — it retained its RAM config from the last session because it was still powered
+  (RAM config survives as long as the module has power).
+
+  The NTRIP connect/drop cycle
+  The pattern repeating every ~10 seconds is the problem to focus on:
+  RTCM stream active   ← caster accepted our connection
+   ... ~3 seconds of RTCM data ...
+  caster closed connection   ← caster timed us out
+  reconnecting in 5 s…
+  Our GGA is being sent immediately on connect (the new code), but the caster is still dropping the session at roughly the 3-second mark. The GGA is not satisfying RTK2go
+   — likely a format or checksum issue we need to debug.
+
+  Position data
+  The 3D lines are telling a clear story of a receiver converging without RTK:
+
+  ┌───────┬────────┬─────┬──────┬─────────────────────────────┐
+  │ ~time │  hAcc  │ sv  │ pdop │        what it means        │
+  ├───────┼────────┼─────┼──────┼─────────────────────────────┤
+  │ 2 s   │ 10.3 m │ 6   │ 4.1  │ Poor geometry, few sats     │
+  ├───────┼────────┼─────┼──────┼─────────────────────────────┤
+  │ 10 s  │ 8.6 m  │ 7   │ 3.3  │ Another satellite rises     │
+  ├───────┼────────┼─────┼──────┼─────────────────────────────┤
+  │ 22 s  │ 6.8 m  │ 8   │ 2.7  │ Geometry improving          │
+  ├───────┼────────┼─────┼──────┼─────────────────────────────┤
+  │ 28 s  │ 6.4 m  │ 11  │ 2.1  │ Jump — 3 more sats acquired │
+  ├───────┼────────┼─────┼──────┼─────────────────────────────┤
+  │ 40 s  │ 5.7 m  │ 13  │ 1.8  │ Getting better              │
+  └───────┴────────┴─────┴──────┴─────────────────────────────┘
+
+  The accuracy is improving because the Kalman filter inside the F9P is averaging down its standalone position estimate as more satellites come into view. This is not RTK
+   — notice there's never a +FLOAT or +FIX in any line. RTK hasn't started because the RTCM stream keeps getting interrupted before the F9P can accumulate enough
+  corrections to initialize ambiguity resolution (which takes 30+ continuous seconds).
+
+  The position also visibly drifts (~3 m in lat over 40 seconds) — normal for a standalone receiver still converging.
+
+  The root problem
+  RTK2go is closing the session at ~3 seconds. GGA should prevent this. Let me add a debug log so we can see exactly what GGA string is being sent and verify the checksum
+   is correct:
+
+
+
+Getting +FLOAT but no FIX. Likely due to Base station distance...
+
+ Let me calculate the baselines:                                                                                                                                         
+                                                                                                                                                                        
+  Rover: 40.979°N, 90.369°W                                                                                                                                               
+   
+  ┌────────────┬───────┬────────┬───────────┬───────────┬──────────┐                                                                                                      
+  │ Mountpoint │  Lat  │  Lon   │ ΔLat (km) │ ΔLon (km) │ Baseline │                                                                                                    
+  ├────────────┼───────┼────────┼───────────┼───────────┼──────────┤
+  │ tremont    │ 40.48 │ -89.49 │ 55.6      │ 74.0      │ ~93 km   │
+  ├────────────┼───────┼────────┼───────────┼───────────┼──────────┤
+  │ mholmbeck  │ 41.24 │ -89.24 │ 29.1      │ 94.8      │ ~99 km   │                                                                                                      
+  └────────────┴───────┴────────┴───────────┴───────────┴──────────┘                                                                                                      
+                                                                                                                                                                          
+  Both are well beyond the ~30 km threshold for reliable Fix. You're in western Illinois (McDonough County area) which has thin CORS coverage on RTK2go.                  
+                                                                                                                                                                        
+  For RTK Fix, your real options:                                                                                                                                         
+                                                                                                                                                                        
+  1. Build your own base station — this is already in the project roadmap. A second ZED-F9P unit set up in survey-in mode within 10–20 km of the rover, broadcasting RTCM 
+  via LoRa (the E22-900T22S already planned) or as an NTRIP caster over WiFi. At that baseline you'd get Fix in under a minute.                                         
+  2. Illinois DOT / ISGS CORS — the state runs its own network with denser station coverage. Their NTRIP endpoint is www.incors.net:10000 — registration is free but      
+  requires a state account. Stations in the Galesburg or Peoria area might put you within 50–60 km, which is borderline but possible for Fix.                             
+  3. What you have now is genuinely useful — RTK Float at 0.7m hAcc (and converging) is good enough for many survey applications. The code and F9P are working correctly.
+                                                                                                                                                                          
+  The architecture decision for the next phase: build the base station component so you have a short-baseline Fix solution. That's Phase 2 in the PDD roadmap.            
