@@ -35,14 +35,14 @@ static const char *TAG = "app";
 #define ENC_DT_PIN   18
 #define ENC_SW_PIN   38
 
-/* LoRa (Ebyte E22-900T30D) — SPI2, not yet wired */
-#define LORA_CS_PIN  11
-#define LORA_MOSI    12
-#define LORA_MISO    13
-#define LORA_SCK     14
-#define LORA_M0_PIN  15
-#define LORA_M1_PIN  16
-#define LORA_AUX_PIN 21   /* GPIO17 taken by encoder CLK */
+/* LoRa (Ebyte E22-900T30D) — UART interface (not SPI), not yet wired
+ * E22 pin names: AUX=output(idle high), TXD=out, RXD=in, M1=M0, M2=M1 */
+#define LORA_UART    UART_NUM_2
+#define LORA_TX_PIN  4    /* ESP TX → E22 RXD */
+#define LORA_RX_PIN  7    /* ESP RX ← E22 TXD */
+#define LORA_AUX_PIN 21   /* E22 AUX → ESP input (GPIO17 taken by encoder CLK) */
+#define LORA_M0_PIN  15   /* ESP output → E22 M1 */
+#define LORA_M1_PIN  16   /* ESP output → E22 M2 */
 
 /* ── WiFi ────────────────────────────────────────────────────────────── */
 
