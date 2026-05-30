@@ -35,6 +35,15 @@ static const char *TAG = "app";
 #define ENC_DT_PIN   18
 #define ENC_SW_PIN   38
 
+/* LoRa (Ebyte E22-900T30D) — SPI2, not yet wired */
+#define LORA_CS_PIN  11
+#define LORA_MOSI    12
+#define LORA_MISO    13
+#define LORA_SCK     14
+#define LORA_M0_PIN  15
+#define LORA_M1_PIN  16
+#define LORA_AUX_PIN 21   /* GPIO17 taken by encoder CLK */
+
 /* ── WiFi ────────────────────────────────────────────────────────────── */
 
 static EventGroupHandle_t s_wifi_eg;
