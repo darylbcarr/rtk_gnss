@@ -1,0 +1,11 @@
+choice GNSS_DRIVER
+    prompt "GNSS module driver"
+    default GNSS_DRIVER_LC29H
+
+    config GNSS_DRIVER_ZED_F9P
+        bool "u-blox ZED-F9P (UBX binary protocol)"
+
+    config GNSS_DRIVER_LC29H
+        bool "Quectel LC29H (NMEA protocol)"
+
+endchoice
