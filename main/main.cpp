@@ -14,6 +14,7 @@
 #include "display.h"
 #include "encoder.h"
 #include "ui.h"
+#include "lora.h"
 #include <cstring>
 
 static const char *TAG = "app";
@@ -151,6 +152,12 @@ extern "C" void app_main(void)
 
     encoder_init(ENC_CLK_PIN, ENC_DT_PIN, ENC_SW_PIN);
     ui_init(imu_ok);
+
+    /* ── LoRa ──── */
+    if (lora_init(LORA_UART, LORA_TX_PIN, LORA_RX_PIN,
+                  LORA_M0_PIN, LORA_M1_PIN, LORA_AUX_PIN,
+                  NULL, NULL) != ESP_OK)
+        ESP_LOGW(TAG, "LoRa init failed — continuing without LoRa");
 
     /* ── GNSS ──── */
     if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN) != ESP_OK) {

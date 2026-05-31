@@ -1,0 +1,20 @@
+menu "LoRa (Ebyte E22-900T30D)"
+
+config LORA_TX_POWER_DBM
+    int "TX power (dBm)"
+    default 21
+    range 21 30
+    help
+        Transmit power: 21, 24, 27, or 30 dBm.
+        21 dBm (~160 mA) is safe on the ESP32 3.3 V rail.
+        30 dBm (~500 mA) requires a dedicated supply.
+
+config LORA_CHANNEL
+    int "RF channel (0–83)"
+    default 52
+    range 0 83
+    help
+        Frequency = 850.125 + channel MHz.
+        Channel 52 = 902.125 MHz (US 900 MHz ISM band).
+
+endmenu
