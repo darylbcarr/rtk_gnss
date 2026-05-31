@@ -34,15 +34,16 @@ static uint8_t power_reg(int dbm)
 }
 
 /*
- * C2 RAM-write command (10 bytes):
- *   0xC2  start_addr  length  REG0 REG1 REG2 REG3 REG4 CRYPTH CRYPTL
+ * C2 RAM-write, addresses 0x03–0x08 (REG3, REG4, CHAN, REG6, CRYPT×2).
+ * ADDH/ADDL/NETID (0x00–0x02) are left at factory defaults (broadcast 0xFFFF).
  *
- * REG0 = 0x64  → UART 9600 baud, air rate 9.6 kbps
- * REG1 = 0x00  → 240-byte sub-packet, RSSI ambient off, no power saving
- * REG2 = tx power (encoded)
- * REG3 = channel (0–83; 850.125 + ch MHz)
- * REG4 = 0x00  → transparent mode, no repeater, monitor off, RSSI byte off
- * CRYPT = 0x00 0x00  → encryption disabled
+ * REG3 (0x03) = 0x64  → UART 9600 baud, 8N1, air rate 9.6 kbps
+ * REG4 (0x04)         → sub-packet 240 B (bits 7:6=00) | TX power (bits 1:0)
+ * CHAN (0x05)         → channel 0–83; frequency = 850.125 + ch MHz
+ * REG6 (0x06) = 0x00  → transparent mode, no RSSI byte, no LBT
+ * CRYPT               → 0x0000 (disabled)
+ *
+ * E22 acknowledges a C2 write with a 0xC1 read-back of the same registers.
  */
 static const uint8_t E22_UART_9600_AIR_96 = 0x64;
 static const uint8_t E22_SUBPKT_240       = 0x00;
@@ -80,9 +81,22 @@ static const int s_probe_bauds[] = { 9600, 115200, 57600, 38400, 19200 };
 
 static esp_err_t e22_configure(void)
 {
-    /* Enter config mode: M0=1, M1=1 */
-    set_mode(1, 1);
-    esp_err_t ret = wait_aux_high(500);
+    /* ── Verify AUX is reachable: watch it dip LOW during mode transition ── */
+    ESP_LOGI(TAG, "AUX before mode change: %s",
+             gpio_get_level(s_aux_pin) ? "HIGH" : "LOW");
+
+    /* Transition normal→config (M0=1, M1=0).  A connected AUX pin will dip LOW briefly. */
+    set_mode(1, 0);
+    bool saw_aux_low = false;
+    for (int i = 0; i < 60; i++) {          /* poll up to 300 ms */
+        vTaskDelay(pdMS_TO_TICKS(5));
+        if (!gpio_get_level(s_aux_pin)) { saw_aux_low = true; break; }
+    }
+    ESP_LOGI(TAG, "AUX dipped LOW during config transition: %s",
+             saw_aux_low ? "YES — M0/M1/AUX wiring OK"
+                         : "NO  — check M0, M1, and AUX wires");
+
+    esp_err_t ret = wait_aux_high(3000);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "E22 did not go idle for config");
         return ret;
@@ -119,25 +133,25 @@ static esp_err_t e22_configure(void)
         ESP_LOGI(TAG, "E22 at non-default baud %d; will reconfigure to 9600", working_baud);
     }
 
-    uint8_t cmd[10] = {
+    uint8_t cmd[9] = {
         0xC2,                                    /* RAM write (no flash wear) */
-        0x00,                                    /* start address REG0 */
-        0x07,                                    /* 7 bytes: REG0–REG4 + CRYPT×2 */
-        E22_UART_9600_AIR_96,                    /* REG0 */
-        E22_SUBPKT_240,                          /* REG1 */
-        power_reg(CONFIG_LORA_TX_POWER_DBM),     /* REG2 */
-        (uint8_t)(CONFIG_LORA_CHANNEL & 0xFF),   /* REG3 */
-        E22_MODE_TRANSPARENT,                    /* REG4 */
-        0x00, 0x00,                              /* CRYPT H/L */
+        0x03,                                    /* start address: REG3 (UART/air-rate) */
+        0x06,                                    /* 6 bytes: REG3, REG4, CHAN, REG6, CRYPT×2 */
+        E22_UART_9600_AIR_96,                    /* REG3 (0x03): UART baud, parity, air rate */
+        (uint8_t)(E22_SUBPKT_240 | power_reg(CONFIG_LORA_TX_POWER_DBM)), /* REG4 (0x04) */
+        (uint8_t)(CONFIG_LORA_CHANNEL & 0xFF),   /* CHAN (0x05) */
+        E22_MODE_TRANSPARENT,                    /* REG6 (0x06): RSSI byte, tx method, LBT */
+        0x00, 0x00,                              /* CRYPT H/L (0x07, 0x08) */
     };
 
     uart_flush_input(s_uart);
     uart_write_bytes(s_uart, cmd, sizeof(cmd));
 
-    /* E22 echoes the command back as confirmation */
-    uint8_t resp[10] = {0};
+    /* E22 responds to C2 with a 0xC1 read-back of the written registers */
+    uint8_t resp[9] = {0};
     int got = uart_read_bytes(s_uart, resp, sizeof(resp), pdMS_TO_TICKS(500));
-    if (got != (int)sizeof(resp) || memcmp(resp, cmd, sizeof(cmd)) != 0) {
+    if (got != (int)sizeof(resp) || resp[0] != 0xC1 ||
+        memcmp(resp + 1, cmd + 1, sizeof(cmd) - 1) != 0) {
         ESP_LOGW(TAG, "E22 C2 write: mismatch (got %d bytes)", got);
         for (int i = 0; i < got; i++)
             ESP_LOGW(TAG, "  [%d] 0x%02X", i, resp[i]);
@@ -194,7 +208,8 @@ esp_err_t lora_init(uart_port_t uart, int tx_pin, int rx_pin,
     s_rx_cb  = cb;
     s_rx_ctx = ctx;
 
-    /* M0, M1 as outputs — start HIGH (config mode) to prevent RF TX during init */
+    /* M0, M1 as outputs — start LOW (normal/transparent mode) so e22_configure
+     * can observe the LOW→HIGH transition on AUX that confirms wiring. */
     gpio_config_t out_cfg = {
         .mode         = GPIO_MODE_OUTPUT,
         .pull_up_en   = GPIO_PULLUP_DISABLE,
@@ -203,8 +218,8 @@ esp_err_t lora_init(uart_port_t uart, int tx_pin, int rx_pin,
         .pin_bit_mask = (1ULL << m0_pin) | (1ULL << m1_pin),
     };
     ESP_ERROR_CHECK(gpio_config(&out_cfg));
-    gpio_set_level(m0_pin, 1);
-    gpio_set_level(m1_pin, 1);
+    gpio_set_level(m0_pin, 0);
+    gpio_set_level(m1_pin, 0);
 
     /* AUX as input */
     gpio_config_t in_cfg = {

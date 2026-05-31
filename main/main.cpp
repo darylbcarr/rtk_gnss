@@ -15,6 +15,7 @@
 #include "encoder.h"
 #include "ui.h"
 #include "lora.h"
+#include "config.h"
 #include <cstring>
 
 static const char *TAG = "app";
@@ -22,30 +23,28 @@ static const char *TAG = "app";
 /* ── Pin assignments ─────────────────────────────────────────────────── */
 
 #define GNSS_UART    UART_NUM_1
-#define GNSS_TX_PIN  6      /* ESP32 TX → LC29H RX (GPIO5 reserved on this board) */
+#define GNSS_TX_PIN  6      /* ESP32 TX → LC29H RX */
 #define GNSS_RX_PIN  1      /* ESP32 RX ← LC29H TX */
 
 #define I2C_PORT     I2C_NUM_0
 #define I2C_SDA_PIN  8
 #define I2C_SCL_PIN  9
 
-#define OLED_ADDR    0x3C   /* SA0 pin low */
+#define OLED_ADDR    0x3C
 #define IMU_ADDR     0x29   /* BNO055 ADR pin high */
 
 #define ENC_CLK_PIN  17
 #define ENC_DT_PIN   18
 #define ENC_SW_PIN   38
 
-/* LoRa (Ebyte E22-900T30D) — UART interface (not SPI), not yet wired
- * E22 pin names: AUX=output(idle high), TXD=out, RXD=in, M1=M0, M2=M1 */
 #define LORA_UART    UART_NUM_2
-#define LORA_TX_PIN  4    /* ESP TX → E22 RXD */
-#define LORA_RX_PIN  7    /* ESP RX ← E22 TXD */
-#define LORA_AUX_PIN 21   /* E22 AUX → ESP input (GPIO17 taken by encoder CLK) */
-#define LORA_M0_PIN  15   /* ESP output → E22 M1 */
-#define LORA_M1_PIN  16   /* ESP output → E22 M2 */
+#define LORA_TX_PIN  4
+#define LORA_RX_PIN  7
+#define LORA_AUX_PIN 21
+#define LORA_M0_PIN  15
+#define LORA_M1_PIN  16
 
-/* ── WiFi ────────────────────────────────────────────────────────────── */
+/* ── WiFi (rover only) ───────────────────────────────────────────────── */
 
 static EventGroupHandle_t s_wifi_eg;
 static esp_netif_t       *s_sta_netif;
@@ -69,13 +68,6 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
 static void wifi_connect(void)
 {
     s_wifi_eg = xEventGroupCreate();
-
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -112,6 +104,9 @@ static void on_rtcm(const uint8_t *buf, size_t len, void *ctx)
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "RTK GNSS — starting");
+
+    /* NVS must come first — config_get_device_mode() needs it */
+    ESP_ERROR_CHECK(config_init());
 
     /* ── I2C bus (shared by OLED and IMU) ──── */
     i2c_master_bus_config_t bus_cfg = {
@@ -151,7 +146,16 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, "IMU not found — heading unavailable");
 
     encoder_init(ENC_CLK_PIN, ENC_DT_PIN, ENC_SW_PIN);
-    ui_init(imu_ok);
+
+    /* ── Mode selection ──── */
+    device_mode_t mode = config_get_device_mode();
+    if (mode == DEVICE_MODE_UNSET) {
+        /* First boot: block until user picks a role */
+        mode = ui_select_mode_blocking();
+    }
+    ESP_LOGI(TAG, "Device mode: %s", mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
+
+    ui_init(imu_ok, mode);
 
     /* ── LoRa ──── */
     if (lora_init(LORA_UART, LORA_TX_PIN, LORA_RX_PIN,
@@ -161,27 +165,28 @@ extern "C" void app_main(void)
 
     /* ── GNSS ──── */
     if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN) != ESP_OK) {
-        /* Do not call display_flush here — a partial I2C command sent to the
-         * SSD1306 while the bus is stressed blanks the display.  The "starting"
-         * screen remains visible and the serial log has the full error. */
         ESP_LOGE(TAG, "GNSS init failed — halting");
         return;
     }
 
-    /* ── WiFi + NTRIP ──── */
-    wifi_connect();
+    /* ── Transport (mode-specific) ──── */
+    if (mode == DEVICE_MODE_ROVER) {
+        wifi_connect();
 
-    static const ntrip_cfg_t ntrip_cfg = {
-        .host       = CONFIG_NTRIP_HOST,
-        .port       = CONFIG_NTRIP_PORT,
-        .mountpoint = CONFIG_NTRIP_MOUNTPOINT,
-        .user       = CONFIG_NTRIP_USER,
-        .password   = CONFIG_NTRIP_PASSWORD,
-    };
-    ntrip_start(&ntrip_cfg, on_rtcm, NULL);
+        static const ntrip_cfg_t ntrip_cfg = {
+            .host       = CONFIG_NTRIP_HOST,
+            .port       = CONFIG_NTRIP_PORT,
+            .mountpoint = CONFIG_NTRIP_MOUNTPOINT,
+            .user       = CONFIG_NTRIP_USER,
+            .password   = CONFIG_NTRIP_PASSWORD,
+        };
+        ntrip_start(&ntrip_cfg, on_rtcm, NULL);
+    } else {
+        ESP_LOGI(TAG, "Base station mode — survey-in not yet implemented");
+    }
 
     /* ── Main loop ──── */
-    gnss_pvt_t pvt  = {};
+    gnss_pvt_t pvt   = {};
     imu_data_t imu_d = {};
 
     for (;;) {
@@ -195,17 +200,20 @@ extern "C" void app_main(void)
         if (imu_ok)
             imu_read(&imu_d);
 
-        ntrip_pos_t pos = {
-            .lat      = pvt.lat,
-            .lon      = pvt.lon,
-            .alt_msl  = pvt.alt_msl,
-            .i_tow    = pvt.i_tow,
-            .pdop     = pvt.pdop,
-            .fix_type = pvt.fix_type,
-            .carr_soln= pvt.carr_soln,
-            .num_sv   = pvt.num_sv,
-        };
-        ntrip_update_position(&pos);
+        if (mode == DEVICE_MODE_ROVER) {
+            ntrip_pos_t pos = {
+                .lat      = pvt.lat,
+                .lon      = pvt.lon,
+                .alt_msl  = pvt.alt_msl,
+                .i_tow    = pvt.i_tow,
+                .pdop     = pvt.pdop,
+                .fix_type = pvt.fix_type,
+                .carr_soln= pvt.carr_soln,
+                .num_sv   = pvt.num_sv,
+            };
+            ntrip_update_position(&pos);
+        }
+
         ui_tick(&pvt, &imu_d);
 
         ESP_LOGI(TAG,
