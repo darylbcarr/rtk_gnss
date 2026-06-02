@@ -14,8 +14,11 @@
 #include "display.h"
 #include "encoder.h"
 #include "ui.h"
-#include "lora.h"
 #include "config.h"
+#include "transport.h"
+#include "ntrip_transport.h"
+#include "lora_transport.h"
+#include "base_app.h"
 #include <cstring>
 
 static const char *TAG = "app";
@@ -23,15 +26,15 @@ static const char *TAG = "app";
 /* ── Pin assignments ─────────────────────────────────────────────────── */
 
 #define GNSS_UART    UART_NUM_1
-#define GNSS_TX_PIN  6      /* ESP32 TX → LC29H RX */
-#define GNSS_RX_PIN  1      /* ESP32 RX ← LC29H TX */
+#define GNSS_TX_PIN  6
+#define GNSS_RX_PIN  1
 
 #define I2C_PORT     I2C_NUM_0
 #define I2C_SDA_PIN  8
 #define I2C_SCL_PIN  9
 
 #define OLED_ADDR    0x3C
-#define IMU_ADDR     0x29   /* BNO055 ADR pin high */
+#define IMU_ADDR     0x29
 
 #define ENC_CLK_PIN  17
 #define ENC_DT_PIN   18
@@ -92,23 +95,15 @@ static void wifi_connect(void)
     ESP_LOGI(TAG, "WiFi connected");
 }
 
-/* ── NTRIP callback ──────────────────────────────────────────────────── */
-
-static void on_rtcm(const uint8_t *buf, size_t len, void *ctx)
-{
-    gnss_write_rtcm(buf, len);
-}
-
 /* ── app_main ────────────────────────────────────────────────────────── */
 
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "RTK GNSS — starting");
 
-    /* NVS must come first — config_get_device_mode() needs it */
     ESP_ERROR_CHECK(config_init());
 
-    /* ── I2C bus (shared by OLED and IMU) ──── */
+    /* ── I2C bus ──── */
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port            = I2C_PORT,
         .sda_io_num          = (gpio_num_t)I2C_SDA_PIN,
@@ -122,7 +117,7 @@ extern "C" void app_main(void)
     i2c_master_bus_handle_t i2c_bus;
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &i2c_bus));
 
-    /* ── I2C scan (diagnostic — remove once hardware is verified) ──── */
+    /* ── I2C scan (diagnostic) ──── */
     ESP_LOGI(TAG, "I2C scan:");
     bool found_any = false;
     for (uint8_t addr = 8; addr < 120; addr++) {
@@ -149,19 +144,28 @@ extern "C" void app_main(void)
 
     /* ── Mode selection ──── */
     device_mode_t mode = config_get_device_mode();
-    if (mode == DEVICE_MODE_UNSET) {
-        /* First boot: block until user picks a role */
+    if (mode == DEVICE_MODE_UNSET)
         mode = ui_select_mode_blocking();
-    }
     ESP_LOGI(TAG, "Device mode: %s", mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
 
     ui_init(imu_ok, mode);
 
-    /* ── LoRa ──── */
-    if (lora_init(LORA_UART, LORA_TX_PIN, LORA_RX_PIN,
-                  LORA_M0_PIN, LORA_M1_PIN, LORA_AUX_PIN,
-                  NULL, NULL) != ESP_OK)
-        ESP_LOGW(TAG, "LoRa init failed — continuing without LoRa");
+    /* ── LoRa transport (both modes) ──── */
+    static lora_transport_t lora_tp;
+    static const lora_transport_cfg_t lora_cfg = {
+        .uart    = LORA_UART,
+        .tx_pin  = LORA_TX_PIN,
+        .rx_pin  = LORA_RX_PIN,
+        .m0_pin  = LORA_M0_PIN,
+        .m1_pin  = LORA_M1_PIN,
+        .aux_pin = LORA_AUX_PIN,
+    };
+    lora_transport_create(&lora_tp, &lora_cfg);
+    transport_t *lora_t = &lora_tp.base;
+
+    bool lora_ok = (transport_init(lora_t, NULL) == ESP_OK);
+    if (!lora_ok)
+        ESP_LOGW(TAG, "LoRa transport init failed — continuing without LoRa");
 
     /* ── GNSS ──── */
     if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN) != ESP_OK) {
@@ -169,7 +173,10 @@ extern "C" void app_main(void)
         return;
     }
 
-    /* ── Transport (mode-specific) ──── */
+    /* ── Mode-specific transport ──── */
+    static ntrip_transport_t ntrip_tp;
+    transport_t *correction_t = NULL;   /* transport that delivers RTCM to this device */
+
     if (mode == DEVICE_MODE_ROVER) {
         wifi_connect();
 
@@ -180,14 +187,33 @@ extern "C" void app_main(void)
             .user       = CONFIG_NTRIP_USER,
             .password   = CONFIG_NTRIP_PASSWORD,
         };
-        ntrip_start(&ntrip_cfg, on_rtcm, NULL);
+        ntrip_transport_create(&ntrip_tp, &ntrip_cfg);
+        if (transport_init(&ntrip_tp.base, NULL) == ESP_OK)
+            correction_t = &ntrip_tp.base;
+        else
+            ESP_LOGW(TAG, "NTRIP transport init failed");
+
+        /* Fall back to LoRa corrections if NTRIP unavailable */
+        if (!correction_t && lora_ok)
+            correction_t = lora_t;
+
     } else {
-        ESP_LOGI(TAG, "Base station mode — survey-in not yet implemented");
+        /* Base: run survey-in then stream RTCM3 → LoRa */
+        display_puts(0, 0, "BASE: SURVEY-IN");
+        display_flush();
+
+        transport_t *outbound = lora_ok ? lora_t : NULL;
+        if (!outbound)
+            ESP_LOGW(TAG, "LoRa unavailable — RTCM will not be forwarded");
+
+        /* Survey-in defaults: 5-minute minimum, 2.0 m accuracy convergence. */
+        base_app_start(outbound, 300, 2.0f);
     }
 
     /* ── Main loop ──── */
-    gnss_pvt_t pvt   = {};
-    imu_data_t imu_d = {};
+    gnss_pvt_t  pvt   = {};
+    imu_data_t  imu_d = {};
+    uint8_t     rtcm_buf[512];
 
     for (;;) {
         if (!gnss_read_pvt(&pvt, 2000)) {
@@ -200,21 +226,49 @@ extern "C" void app_main(void)
         if (imu_ok)
             imu_read(&imu_d);
 
-        if (mode == DEVICE_MODE_ROVER) {
-            ntrip_pos_t pos = {
-                .lat      = pvt.lat,
-                .lon      = pvt.lon,
-                .alt_msl  = pvt.alt_msl,
-                .i_tow    = pvt.i_tow,
-                .pdop     = pvt.pdop,
-                .fix_type = pvt.fix_type,
-                .carr_soln= pvt.carr_soln,
-                .num_sv   = pvt.num_sv,
-            };
-            ntrip_update_position(&pos);
+        /* Drain incoming RTCM corrections and forward to GNSS */
+        if (correction_t) {
+            int n;
+            while ((n = transport_recv(correction_t, rtcm_buf,
+                                       sizeof(rtcm_buf), 0)) > 0)
+                gnss_write_rtcm(rtcm_buf, (size_t)n);
+
+            if (mode == DEVICE_MODE_ROVER &&
+                correction_t == &ntrip_tp.base) {
+                ntrip_pos_t pos = {
+                    .lat       = pvt.lat,
+                    .lon       = pvt.lon,
+                    .alt_msl   = pvt.alt_msl,
+                    .i_tow     = pvt.i_tow,
+                    .pdop      = pvt.pdop,
+                    .fix_type  = pvt.fix_type,
+                    .carr_soln = pvt.carr_soln,
+                    .num_sv    = pvt.num_sv,
+                };
+                ntrip_update_position(&pos);
+            }
         }
 
         ui_tick(&pvt, &imu_d);
+
+        /* In base mode overlay survey-in progress on OLED lines 2–3 */
+        if (mode == DEVICE_MODE_BASE) {
+            base_state_t bst = base_app_get_state();
+            if (bst == BASE_STATE_SURVEY_IN) {
+                gnss_svin_t sv = base_app_get_svin();
+                char ln2[22], ln3[22];
+                snprintf(ln2, sizeof(ln2), "T:%4lus Acc:%.2fm",
+                         (unsigned long)sv.dur_s, sv.mean_acc_m);
+                snprintf(ln3, sizeof(ln3), "Sv:%2u  %s",
+                         pvt.num_sv, sv.valid ? "VALID" : "ACTIVE");
+                display_puts(0, 2, ln2);
+                display_puts(0, 3, ln3);
+                display_flush();
+            } else if (bst == BASE_STATE_BROADCASTING) {
+                display_puts(0, 2, "RTCM BROADCAST  ");
+                display_flush();
+            }
+        }
 
         ESP_LOGI(TAG,
                  "sv=%u fix=%u rtk=%u  lat=%.7f lon=%.7f alt=%.2fm  "

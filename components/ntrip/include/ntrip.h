@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -36,6 +37,7 @@ typedef void (*ntrip_rtcm_cb_t)(const uint8_t *buf, size_t len, void *ctx);
  */
 esp_err_t ntrip_start(const ntrip_cfg_t *cfg, ntrip_rtcm_cb_t cb, void *ctx);
 void      ntrip_stop(void);
+bool      ntrip_is_connected(void);
 
 /* Update the rover position used for GGA sentences.
  * Thread-safe; call after every successful gnss_read_pvt(). */

@@ -355,3 +355,23 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
     uart_write_bytes(s_uart, (const char *)buf, len);
     xSemaphoreGive(s_tx_mutex);
 }
+
+/* ZED-F9P base-station survey-in uses UBX-CFG-TMODE3 — not yet implemented. */
+esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
+{
+    (void)min_dur_s; (void)acc_limit_m;
+    ESP_LOGW("gnss", "gnss_start_survey_in not implemented for ZED-F9P driver");
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+bool gnss_get_svin_status(gnss_svin_t *out)
+{
+    (void)out;
+    return false;
+}
+
+int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)
+{
+    (void)buf; (void)max_len; (void)timeout_ms;
+    return 0;
+}

@@ -6,4 +6,4 @@ endif()
 
 idf_component_register(SRCS ${gnss_srcs}
                         INCLUDE_DIRS "include"
-                        REQUIRES driver esp_timer log)
+                        REQUIRES driver esp_timer log freertos esp_ringbuf)

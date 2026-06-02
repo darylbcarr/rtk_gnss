@@ -40,6 +40,7 @@ static ntrip_rtcm_cb_t  s_cb;
 static void            *s_ctx;
 static TaskHandle_t     s_task;
 static volatile bool    s_running;
+static volatile bool    s_connected;
 
 static ntrip_pos_t       s_pos;
 static bool              s_pos_valid;
@@ -232,6 +233,7 @@ static void ntrip_task(void *arg)
         }
 
         ESP_LOGI(TAG, "RTCM stream active — %s/%s", s_cfg.host, s_cfg.mountpoint);
+        s_connected = true;
 
         /* RTK2go requires GGA within a few seconds; send immediately then every 30 s. */
         send_gga(fd);
@@ -259,6 +261,7 @@ static void ntrip_task(void *arg)
             }
         }
 
+        s_connected = false;
         close(fd);
         if (s_running) {
             ESP_LOGI(TAG, "reconnecting in 5 s…");
@@ -268,6 +271,8 @@ static void ntrip_task(void *arg)
 
     vTaskDelete(NULL);
 }
+
+bool ntrip_is_connected(void) { return s_connected; }
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
