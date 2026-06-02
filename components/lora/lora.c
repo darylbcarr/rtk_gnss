@@ -2,6 +2,7 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -58,15 +59,18 @@ static void set_mode(int m0, int m1)
     vTaskDelay(pdMS_TO_TICKS(2));
 }
 
-/* Poll AUX until high (module idle) or timeout. */
+/* Poll AUX until high (module idle) or timeout.
+ * Uses esp_timer for a tick-rate-independent deadline so the function
+ * behaves correctly regardless of CONFIG_FREERTOS_HZ (pdMS_TO_TICKS(5)
+ * rounds to 0 at 100 Hz, making the old elapsed-counter approach fire
+ * the timeout in microseconds instead of 2 s). */
 static esp_err_t wait_aux_high(uint32_t timeout_ms)
 {
-    uint32_t elapsed = 0;
+    int64_t deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000LL;
     while (!gpio_get_level(s_aux_pin)) {
-        vTaskDelay(pdMS_TO_TICKS(5));
-        elapsed += 5;
-        if (elapsed >= timeout_ms) {
-            ESP_LOGW(TAG, "AUX timeout after %lu ms", timeout_ms);
+        vTaskDelay(1);   /* yield for at least 1 tick regardless of tick rate */
+        if (esp_timer_get_time() >= deadline_us) {
+            ESP_LOGW(TAG, "AUX timeout after %lu ms", (unsigned long)timeout_ms);
             return ESP_ERR_TIMEOUT;
         }
     }

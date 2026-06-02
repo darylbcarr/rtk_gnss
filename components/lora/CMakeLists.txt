@@ -1,2 +1,2 @@
 idf_component_register(SRCS "lora.c" INCLUDE_DIRS "include"
-    REQUIRES driver log freertos)
+    REQUIRES driver log freertos esp_timer)
