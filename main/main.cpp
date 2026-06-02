@@ -231,6 +231,13 @@ extern "C" void app_main(void)
     uint8_t     rtcm_buf[512];
 
     for (;;) {
+        /* In base mode the LC29H outputs RTCM only — no NMEA GGA is emitted.
+         * Skip the blocking PVT wait so the main loop yields CPU quickly. */
+        if (mode == DEVICE_MODE_BASE) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
         if (!gnss_read_pvt(&pvt, 2000)) {
             ESP_LOGW(TAG, "No GNSS data in 2 s — check antenna/wiring");
             display_puts(0, 0, "GNSS TIMEOUT    ");

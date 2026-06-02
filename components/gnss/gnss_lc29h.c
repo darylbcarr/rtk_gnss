@@ -17,7 +17,7 @@ static const char *TAG = "gnss";
 #define GNSS_UART_BUF_SIZE  2048
 #define NMEA_MAX_LINE       128
 #define RTCM_MAX_FRAME      1029    /* 3 header + 1023 payload + 3 CRC */
-#define RTCM_RINGBUF_SIZE   (RTCM_MAX_FRAME * 5 + 64)
+#define RTCM_RINGBUF_SIZE   (RTCM_MAX_FRAME * 20 + 128)  /* ~20 s @ 1 kB/s */
 
 static uart_port_t       s_uart;
 static SemaphoreHandle_t s_tx_mutex;
