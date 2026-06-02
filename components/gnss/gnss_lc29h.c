@@ -431,6 +431,14 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
+    /*
+     * Switch to base-station receiver mode first.  gnss_init() sets rover
+     * mode (W,1) for all devices; override to base mode (W,2) here before
+     * commanding survey-in so the two modes don't conflict.
+     */
+    pqtm_send("PQTMCFGRCVRMODE,W,2");
+    vTaskDelay(pdMS_TO_TICKS(100));
+
     char body[64];
     uint32_t acc_01mm = (uint32_t)(acc_limit_m * 10000.0f);
     snprintf(body, sizeof(body), "PQTMSVIN,W,1,%lu,%lu",
