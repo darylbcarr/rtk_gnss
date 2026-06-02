@@ -3,3 +3,7 @@
 # (used for idf.py monitor) regardless of this setting.  Use GPIO 14
 # for UART TX — it is the first pin below that reserved range.
 CONFIG_TINYUSB_ENABLED=n
+
+# Rover receives RTCM corrections from the local LoRa base, not NTRIP.
+# Switch to CONFIG_ROVER_CORRECTION_NTRIP=y to revert to internet caster.
+CONFIG_ROVER_CORRECTION_LORA=y

@@ -1,29 +1,51 @@
 menu "RTK GNSS"
 
+choice ROVER_CORRECTION_SOURCE
+    prompt "Rover RTCM correction source"
+    default ROVER_CORRECTION_NTRIP
+    help
+        Selects how the rover receives RTCM3 differential corrections.
+        NTRIP: WiFi connection to an internet caster (RTK2Go, state CORS, etc.)
+        LoRa:  Local base station broadcasting over the LoRa radio link.
+
+    config ROVER_CORRECTION_NTRIP
+        bool "NTRIP caster (WiFi)"
+
+    config ROVER_CORRECTION_LORA
+        bool "Local base via LoRa"
+
+endchoice
+
 config WIFI_SSID
     string "WiFi SSID"
     default "myssid"
+    depends on ROVER_CORRECTION_NTRIP
 
 config WIFI_PASSWORD
     string "WiFi password"
     default "mypassword"
+    depends on ROVER_CORRECTION_NTRIP
 
 config NTRIP_HOST
     string "NTRIP caster host"
     default "caster.rtk2go.com"
+    depends on ROVER_CORRECTION_NTRIP
 
 config NTRIP_PORT
     int "NTRIP caster port"
     default 2101
     range 1 65535
+    depends on ROVER_CORRECTION_NTRIP
 
 config NTRIP_MOUNTPOINT
     string "NTRIP mountpoint"
     default ""
+    depends on ROVER_CORRECTION_NTRIP
 
 config NTRIP_USER
     string "NTRIP username (email address for RTK2go)"
     default ""
+    depends on ROVER_CORRECTION_NTRIP
     help
         For RTK2go, enter your email address here. RTK2go requires a valid
         email as the username and will disconnect clients that do not provide one.
@@ -32,6 +54,7 @@ config NTRIP_USER
 config NTRIP_PASSWORD
     string "NTRIP password (use 'none' for RTK2go)"
     default "none"
+    depends on ROVER_CORRECTION_NTRIP
     help
         For RTK2go, enter 'none' — the password field is ignored by their caster.
         For other casters, enter the actual password.

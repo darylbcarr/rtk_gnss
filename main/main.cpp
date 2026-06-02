@@ -47,7 +47,9 @@ static const char *TAG = "app";
 #define LORA_M0_PIN  15
 #define LORA_M1_PIN  16
 
-/* ── WiFi (rover only) ───────────────────────────────────────────────── */
+/* ── WiFi — only compiled when NTRIP correction source is selected ───── */
+
+#if CONFIG_ROVER_CORRECTION_NTRIP
 
 static EventGroupHandle_t s_wifi_eg;
 static esp_netif_t       *s_sta_netif;
@@ -94,6 +96,8 @@ static void wifi_connect(void)
     xEventGroupWaitBits(s_wifi_eg, WIFI_UP_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(TAG, "WiFi connected");
 }
+
+#endif /* CONFIG_ROVER_CORRECTION_NTRIP */
 
 /* ── app_main ────────────────────────────────────────────────────────── */
 
@@ -174,12 +178,14 @@ extern "C" void app_main(void)
     }
 
     /* ── Mode-specific transport ──── */
-    static ntrip_transport_t ntrip_tp;
     transport_t *correction_t = NULL;   /* transport that delivers RTCM to this device */
 
     if (mode == DEVICE_MODE_ROVER) {
+
+#if CONFIG_ROVER_CORRECTION_NTRIP
         wifi_connect();
 
+        static ntrip_transport_t ntrip_tp;
         static const ntrip_cfg_t ntrip_cfg = {
             .host       = CONFIG_NTRIP_HOST,
             .port       = CONFIG_NTRIP_PORT,
@@ -191,11 +197,20 @@ extern "C" void app_main(void)
         if (transport_init(&ntrip_tp.base, NULL) == ESP_OK)
             correction_t = &ntrip_tp.base;
         else
-            ESP_LOGW(TAG, "NTRIP transport init failed");
+            ESP_LOGW(TAG, "NTRIP transport init failed — no corrections");
 
-        /* Fall back to LoRa corrections if NTRIP unavailable */
-        if (!correction_t && lora_ok)
+#else  /* CONFIG_ROVER_CORRECTION_LORA */
+        if (lora_ok) {
             correction_t = lora_t;
+            ESP_LOGI(TAG, "Rover using LoRa corrections from local base");
+            display_puts(0, 1, "CORR: LoRa base ");
+            display_flush();
+        } else {
+            ESP_LOGE(TAG, "LoRa unavailable — rover has no correction source");
+            display_puts(0, 1, "NO CORRECTION!  ");
+            display_flush();
+        }
+#endif
 
     } else {
         /* Base: run survey-in then stream RTCM3 → LoRa */
@@ -233,8 +248,8 @@ extern "C" void app_main(void)
                                        sizeof(rtcm_buf), 0)) > 0)
                 gnss_write_rtcm(rtcm_buf, (size_t)n);
 
-            if (mode == DEVICE_MODE_ROVER &&
-                correction_t == &ntrip_tp.base) {
+#if CONFIG_ROVER_CORRECTION_NTRIP
+            if (mode == DEVICE_MODE_ROVER) {
                 ntrip_pos_t pos = {
                     .lat       = pvt.lat,
                     .lon       = pvt.lon,
@@ -247,6 +262,7 @@ extern "C" void app_main(void)
                 };
                 ntrip_update_position(&pos);
             }
+#endif
         }
 
         ui_tick(&pvt, &imu_d);
