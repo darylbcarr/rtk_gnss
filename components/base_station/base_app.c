@@ -41,14 +41,44 @@ static void wait_survey_in(void)
     }
 
     /*
-     * PQTMSVIN returns ERROR,3 on tested LC29H firmware — survey-in control
-     * is not available at runtime.  Module must be pre-configured once via
-     * Quectel GNSS Assistant (save RTCM messages + survey-in to flash).
-     * gnss_start_survey_in() already activated base mode; proceed immediately
-     * to RTCM broadcast.
+     * Module restarted in base mode with RTCM and survey-in configured.
+     * Monitor $PQTMSVINSTATUS for progress; broadcast_rtcm() runs immediately
+     * after and forwards any RTCM that appears during survey-in convergence.
      */
-    ESP_LOGI(TAG, "Proceeding to RTCM broadcast "
-             "(PQTMSVIN not supported on this firmware — pre-configure via GNSS Assistant)");
+    ESP_LOGI(TAG, "Base configured — monitoring survey-in progress");
+
+    gnss_svin_t sv;
+    uint32_t    last_log_s = 0;
+    uint32_t    poll_ticks = 0;
+    uint32_t    elapsed_ms = 0;
+    /* Monitor for min_dur + 5 min grace, then hand off regardless */
+    uint32_t    limit_ms   = (s_min_dur + 300u) * 1000u;
+
+    while (elapsed_ms < limit_ms) {
+        if (gnss_get_svin_status(&sv)) {
+            xSemaphoreTake(s_svin_lock, portMAX_DELAY);
+            s_last_svin = sv;
+            xSemaphoreGive(s_svin_lock);
+
+            if (sv.dur_s != last_log_s) {
+                log_svin_progress(&sv);
+                last_log_s = sv.dur_s;
+            }
+
+            if (sv.valid) {
+                ESP_LOGI(TAG, "Survey-in converged at t=%lus, acc=%.3fm",
+                         (unsigned long)sv.dur_s, sv.mean_acc_m);
+                return;
+            }
+        }
+
+        if (++poll_ticks % 5 == 0)
+            gnss_poll_svin_status();
+
+        vTaskDelay(pdMS_TO_TICKS(200));
+        elapsed_ms += 200;
+    }
+    ESP_LOGW(TAG, "Survey-in monitor timed out — proceeding to broadcast");
 }
 
 /* ── RTCM broadcast phase ────────────────────────────────────────────── */

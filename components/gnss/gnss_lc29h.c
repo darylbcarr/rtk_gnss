@@ -431,25 +431,51 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
-    (void)min_dur_s; (void)acc_limit_m;
-
     /*
-     * On tested LC29H firmware (EA variant) PQTMCFGRTCM and PQTMSVIN both
-     * return ERROR,3 regardless of mode — they are not supported at runtime.
-     * RTCM message selection and survey-in must be pre-configured once via
-     * Quectel GNSS Assistant (PC tool) and saved to flash.  From then on, the
-     * module remembers those settings and only needs base mode to be activated
-     * here.  See docs/questions.txt for the one-time setup procedure.
+     * Correct LC29H base station configuration sequence.
+     * Key findings from protocol spec:
+     *   - Survey-in command is PQTMCFGSVIN, not PQTMSVIN
+     *   - RTCM output uses $PAIR4xx commands, not $PQTMCFGRTCM
+     *   - All config must be sent in ROVER mode before switching to base
+     *   - PQTMSAVEPAR + PQTMSRR (restart) are required to apply settings
      *
-     * Confirmed working sequence: W,1 → OK,1 in gnss_init, then W,2 here.
+     * gnss_init() leaves the module in rover mode (W,1) — confirmed OK,1.
      */
-    pqtm_send("PQTMCFGRCVRMODE,W,2");
-    vTaskDelay(pdMS_TO_TICKS(500));
 
-    pqtm_send("PQTMCFGRCVRMODE,R");   /* confirm — logged by reader task */
+    /* ── RTCM message enables ───────────────────────────────────────────── */
+    pqtm_send("PAIR432,1");   /* RTCM MSM7 observations */
+    vTaskDelay(pdMS_TO_TICKS(200));
+    pqtm_send("PAIR434,1");   /* RTCM 1005 — antenna reference point */
+    vTaskDelay(pdMS_TO_TICKS(200));
+    pqtm_send("PAIR436,1");   /* RTCM ephemeris messages */
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    ESP_LOGI(TAG, "Base mode activated — RTCM flows if module was pre-configured");
+    /* ── Survey-in ─────────────────────────────────────────────────────── */
+    /* PQTMCFGSVIN,W,<mode>,<min_dur_s>,<acc_m>,<ecef_x>,<ecef_y>,<ecef_z>
+     * mode=1 survey-in; ecef 0,0,0 = use autonomous position averaging    */
+    char body[72];
+    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%.1f,0,0,0",
+             (unsigned long)min_dur_s, acc_limit_m);
+    pqtm_send(body);
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    /* ── Switch to base mode (last config step) ─────────────────────────── */
+    pqtm_send("PQTMCFGRCVRMODE,W,2");
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    /* ── Save to flash ──────────────────────────────────────────────────── */
+    pqtm_send("PQTMSAVEPAR");
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    /* ── Restart module — required for all settings to take effect ──────── */
+    ESP_LOGI(TAG, "Restarting LC29H to apply base station configuration…");
+    pqtm_send("PQTMSRR");
+
+    /* Wait for module to restart and resume NMEA output at saved baud rate */
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    ESP_LOGI(TAG, "LC29H restarted — base mode active, survey-in min=%lus acc=%.1fm",
+             (unsigned long)min_dur_s, acc_limit_m);
     return ESP_OK;
 }
 
