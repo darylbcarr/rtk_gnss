@@ -438,21 +438,39 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
      * (mode=2) — even PQTMCFGRTCM and PQTMSVIN.  gnss_init() leaves the
      * module in rover mode (W,1), so all configuration must be issued here
      * before switching to base mode.  PQTMCFGRCVRMODE,W,2 goes LAST.
+     *
+     * Read back the actual mode first — logged by reader task as OK,1 or OK,2.
+     * If it shows OK,2 (still base), the W,1 in gnss_init is not persisting.
      */
+    pqtm_send("PQTMCFGRCVRMODE,R");
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    /*
+     * Wait for the W,1 mode transition to fully stabilise.  base_task runs at
+     * higher priority than app_main and preempts it immediately after gnss_init
+     * returns, leaving essentially 0 ms for the LC29H to complete its internal
+     * mode switch.  3 s is conservative but correct.
+     */
+    ESP_LOGI(TAG, "waiting 3 s for rover-mode transition before configuring RTCM…");
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
+    /* Read mode again after settling — confirms whether we're now in rover mode. */
+    pqtm_send("PQTMCFGRCVRMODE,R");
+    vTaskDelay(pdMS_TO_TICKS(300));
 
     /* Enable RTCM output (while still in rover mode). */
     pqtm_send("PQTMCFGRTCM,W,1");
-    vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(300));
 
     /* Clear any stale survey-in state. */
     pqtm_send("PQTMSVIN,W,0");
-    vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(300));
 
     /* Arm survey-in (takes effect when base mode is activated below). */
     char body[48];
     snprintf(body, sizeof(body), "PQTMSVIN,W,1,%lu", (unsigned long)min_dur_s);
     pqtm_send(body);
-    vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(300));
 
     /* Switch to base mode — activates RTCM output and survey-in. */
     pqtm_send("PQTMCFGRCVRMODE,W,2");
