@@ -54,6 +54,17 @@ static void broadcast_rtcm(void)
 {
     s_state = BASE_STATE_BROADCASTING;
 
+    /* Drain any frames that piled up during startup/configuration.
+     * Sending a burst of old frames saturates the E22 and causes AUX
+     * to stay LOW, blocking real-time forwarding. */
+    {
+        static uint8_t discard[RTCM_BUF_SIZE];
+        int flushed = 0;
+        while (gnss_read_rtcm(discard, sizeof(discard), 0) > 0) flushed++;
+        if (flushed)
+            ESP_LOGI(TAG, "Flushed %d stale RTCM frames before broadcast", flushed);
+    }
+
     static uint8_t  buf[RTCM_BUF_SIZE];
     uint32_t        frames   = 0;
     uint32_t        bytes    = 0;
