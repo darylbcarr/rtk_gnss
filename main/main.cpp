@@ -286,7 +286,17 @@ extern "C" void app_main(void)
             }
         }
 
-        ESP_LOGI(TAG,
+        /* Log only on RTK state transitions so the monitor stays readable */
+        static uint8_t s_last_carr;
+        if (pvt.carr_soln != s_last_carr) {
+            static const char *const RTK_STR[] = { "NONE", "FLOAT", "FIX" };
+            ESP_LOGI(TAG, "RTK %s  sv=%u hAcc=%.3fm",
+                     RTK_STR[pvt.carr_soln < 3 ? pvt.carr_soln : 0],
+                     pvt.num_sv, pvt.h_acc);
+            s_last_carr = pvt.carr_soln;
+        }
+
+        ESP_LOGD(TAG,
                  "sv=%u fix=%u rtk=%u  lat=%.7f lon=%.7f alt=%.2fm  "
                  "hAcc=%.3f pdop=%.1f  hdg=%.1f cal=%u",
                  pvt.num_sv, pvt.fix_type, pvt.carr_soln,
