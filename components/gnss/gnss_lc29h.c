@@ -338,6 +338,7 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
 
         char    line[NMEA_MAX_LINE];
         uint8_t li = 0;
+        int     rtcm_d3 = 0;   /* count of 0xD3 bytes seen (module in base mode) */
         int64_t deadline = esp_timer_get_time() + 2000000LL;
         while (esp_timer_get_time() < deadline) {
             uint8_t b;
@@ -346,7 +347,14 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
                 line[li] = '\0'; li = 0;
                 if (line[0] == '$' && strlen(line) > 5) {
                     active_baud = try_bauds[bi];
-                    ESP_LOGI(TAG, "LC29H detected at %d baud: %s", active_baud, line);
+                    ESP_LOGI(TAG, "LC29H (NMEA) detected at %d baud: %s", active_baud, line);
+                    break;
+                }
+            } else if (b == 0xD3) {
+                /* RTCM3 preamble — module is running in base mode */
+                if (++rtcm_d3 >= 3) {
+                    active_baud = try_bauds[bi];
+                    ESP_LOGI(TAG, "LC29H (RTCM/base mode) detected at %d baud", active_baud);
                     break;
                 }
             } else if (b != '\r' && li < NMEA_MAX_LINE - 1) {
@@ -354,7 +362,7 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
             }
         }
         if (!active_baud)
-            ESP_LOGI(TAG, "  no NMEA at %d baud", try_bauds[bi]);
+            ESP_LOGI(TAG, "  no signal at %d baud", try_bauds[bi]);
     }
 
     if (!active_baud) {
@@ -469,21 +477,16 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     vTaskDelay(pdMS_TO_TICKS(500));
 
     /* ── Restart module — required for all settings to take effect ──────── */
-    /* Try PQTMSYSRESET first (some EA firmware); fall back to PQTMSRR.
-     * If both return ERROR,3 the config is still saved — power-cycle the
-     * base once and it will boot in base mode with RTCM running. */
+    /* PQTMSRR returns ERROR,3 on some firmware; if so the config is still
+     * saved — power-cycle the base once and it will boot in base mode. */
     ESP_LOGI(TAG, "Requesting LC29H restart to apply saved configuration…");
-    pqtm_send("PQTMSYSRESET,0,0");
-    vTaskDelay(pdMS_TO_TICKS(500));
     pqtm_send("PQTMSRR");
 
-    /* 5 s wait: if restart succeeded the module re-initialises here.
-     * If restart failed the module is still running in base mode with
-     * the saved config — RTCM should flow without a restart. */
+    /* 5 s wait: if restart succeeded the module re-initialises here */
     vTaskDelay(pdMS_TO_TICKS(5000));
 
     ESP_LOGI(TAG, "LC29H base init done — survey-in min=%lus acc=%.1fm "
-             "(if restart failed: power-cycle once to apply saved config)",
+             "(if PQTMSRR gave ERROR,3: power-cycle once to apply saved config)",
              (unsigned long)min_dur_s, acc_limit_m);
     return ESP_OK;
 }
