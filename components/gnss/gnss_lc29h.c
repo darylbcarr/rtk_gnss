@@ -286,8 +286,9 @@ static void gnss_reader_task(void *arg)
                 parse_gsa(nmea_buf, &pvt);
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
                 parse_svinstatus(nmea_buf);
-            } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0) {
-                /* Log all other PQTM responses so config ACKs are visible */
+            } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0 ||
+                       strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
+                /* Log all PQTM and PAIR responses so config ACKs are visible */
                 ESP_LOGI(TAG, "%s", nmea_buf);
             }
         } else if (b != '\r' && nmea_idx < NMEA_MAX_LINE - 1) {
@@ -468,13 +469,21 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     vTaskDelay(pdMS_TO_TICKS(500));
 
     /* ── Restart module — required for all settings to take effect ──────── */
-    ESP_LOGI(TAG, "Restarting LC29H to apply base station configuration…");
+    /* Try PQTMSYSRESET first (some EA firmware); fall back to PQTMSRR.
+     * If both return ERROR,3 the config is still saved — power-cycle the
+     * base once and it will boot in base mode with RTCM running. */
+    ESP_LOGI(TAG, "Requesting LC29H restart to apply saved configuration…");
+    pqtm_send("PQTMSYSRESET,0,0");
+    vTaskDelay(pdMS_TO_TICKS(500));
     pqtm_send("PQTMSRR");
 
-    /* Wait for module to restart and resume NMEA output at saved baud rate */
+    /* 5 s wait: if restart succeeded the module re-initialises here.
+     * If restart failed the module is still running in base mode with
+     * the saved config — RTCM should flow without a restart. */
     vTaskDelay(pdMS_TO_TICKS(5000));
 
-    ESP_LOGI(TAG, "LC29H restarted — base mode active, survey-in min=%lus acc=%.1fm",
+    ESP_LOGI(TAG, "LC29H base init done — survey-in min=%lus acc=%.1fm "
+             "(if restart failed: power-cycle once to apply saved config)",
              (unsigned long)min_dur_s, acc_limit_m);
     return ESP_OK;
 }
