@@ -68,53 +68,55 @@ static void broadcast_rtcm(void)
     static uint8_t  buf[RTCM_BUF_SIZE];
     uint32_t        frames   = 0;
     uint32_t        bytes    = 0;
-    uint32_t        errors      = 0;
-    uint32_t        last_log    = (uint32_t)(esp_timer_get_time() / 1000);
-    uint32_t        last_svin_s = 0;
-    uint32_t        poll_ticks  = 0;
+    uint32_t        errors   = 0;
+    uint32_t        last_log = (uint32_t)(esp_timer_get_time() / 1000);
+    bool            saw_1005 = false;
+
+    /* Track unique RTCM types going out — first occurrence logged at INFO */
+    uint16_t        tx_types[16];
+    uint8_t         n_tx_types = 0;
 
     for (;;) {
         int len = gnss_read_rtcm(buf, sizeof(buf), RTCM_TIMEOUT_MS);
-        if (len == 0) {
-            /* No frame this cycle — poll survey-in status while idle */
-            if (++poll_ticks % 5 == 0)
-                gnss_poll_svin_status();
-            continue;
-        }
         if (len < 0) { errors++; continue; }
 
-        if (s_transport) {
-            int sent = transport_send(s_transport, buf, (size_t)len);
-            if (sent < 0) {
-                errors++;
-                ESP_LOGW(TAG, "LoRa send error for %d B frame", len);
-            } else {
-                frames++;
-                bytes += (uint32_t)len;
+        if (len > 0) {
+            if (len >= 6 && buf[0] == 0xD3) {
+                uint16_t mt = ((uint16_t)(buf[3] & 0xFF) << 4) | (buf[4] >> 4);
+
+                /* Log each type the first time it appears */
+                bool dup = false;
+                for (uint8_t i = 0; i < n_tx_types; i++) if (tx_types[i] == mt) { dup = true; break; }
+                if (!dup && n_tx_types < 16) {
+                    tx_types[n_tx_types++] = mt;
+                    ESP_LOGI(TAG, "Outbound RTCM type %u (total types: %u)", mt, n_tx_types);
+                }
+
+                /* 1005 = survey-in has a valid base position */
+                if (mt == 1005 && !saw_1005) {
+                    saw_1005 = true;
+                    ESP_LOGI(TAG, "Survey-in converged — RTCM 1005 in stream");
+                }
+            }
+
+            if (s_transport) {
+                int sent = transport_send(s_transport, buf, (size_t)len);
+                if (sent < 0) {
+                    errors++;
+                    ESP_LOGW(TAG, "LoRa send error for %d B frame", len);
+                } else {
+                    frames++;
+                    bytes += (uint32_t)len;
+                }
             }
         }
 
-        /* Periodic status logs */
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
         if (now - last_log >= 10000) {
-            ESP_LOGI(TAG, "RTCM broadcast: %lu frames %lu B %lu errors",
-                     (unsigned long)frames, (unsigned long)bytes, (unsigned long)errors);
+            ESP_LOGI(TAG, "RTCM broadcast: %lu frames %lu B %lu errors  1005=%s",
+                     (unsigned long)frames, (unsigned long)bytes, (unsigned long)errors,
+                     saw_1005 ? "YES" : "NO");
             last_log = now;
-        }
-
-        /* Log survey-in progress when new status arrives */
-        gnss_svin_t sv;
-        if (gnss_get_svin_status(&sv)) {
-            xSemaphoreTake(s_svin_lock, portMAX_DELAY);
-            s_last_svin = sv;
-            xSemaphoreGive(s_svin_lock);
-            if (sv.dur_s != last_svin_s) {
-                log_svin_progress(&sv);
-                last_svin_s = sv.dur_s;
-                if (sv.valid && s_state != BASE_STATE_BROADCASTING)
-                    ESP_LOGI(TAG, "Survey-in converged at t=%lus, acc=%.3fm",
-                             (unsigned long)sv.dur_s, sv.mean_acc_m);
-            }
         }
     }
 }

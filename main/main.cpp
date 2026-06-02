@@ -2,6 +2,7 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
@@ -293,7 +294,7 @@ extern "C" void app_main(void)
             }
         }
 
-        /* Log only on RTK state transitions so the monitor stays readable */
+        /* Log RTK state transitions */
         static uint8_t s_last_carr;
         if (pvt.carr_soln != s_last_carr) {
             static const char *const RTK_STR[] = { "NONE", "FLOAT", "FIX" };
@@ -301,6 +302,17 @@ extern "C" void app_main(void)
                      RTK_STR[pvt.carr_soln < 3 ? pvt.carr_soln : 0],
                      pvt.num_sv, pvt.h_acc);
             s_last_carr = pvt.carr_soln;
+        }
+
+        /* Periodic position log — shows satellite count and fix quality without
+         * waiting for an RTK state change (useful during survey-in phase). */
+        static uint32_t s_pos_log_s;
+        uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+        if (now_s - s_pos_log_s >= 30) {
+            ESP_LOGI(TAG, "pos sv=%u fix=%u rtk=%u lat=%.6f lon=%.6f hAcc=%.2fm pdop=%.1f",
+                     pvt.num_sv, pvt.fix_type, pvt.carr_soln,
+                     pvt.lat, pvt.lon, pvt.h_acc, pvt.pdop);
+            s_pos_log_s = now_s;
         }
 
         ESP_LOGD(TAG,

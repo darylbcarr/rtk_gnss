@@ -20,6 +20,7 @@ static const char *TAG = "gnss";
 #define RTCM_RINGBUF_SIZE   (RTCM_MAX_FRAME * 20 + 128)  /* ~20 s @ 1 kB/s */
 
 static uart_port_t       s_uart;
+static bool              s_booted_in_base;   /* RTCM detected at init — saved config intact */
 static SemaphoreHandle_t s_tx_mutex;
 
 /* Background reader queues */
@@ -287,9 +288,12 @@ static void gnss_reader_task(void *arg)
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
                 parse_svinstatus(nmea_buf);
             } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0 ||
-                       strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
-                /* Log all PQTM and PAIR responses so config ACKs are visible */
+                       strncmp(nmea_buf + 1, "PAIR001", 7) == 0) {
+                /* Config ACKs ($PAIR001) and PQTM responses at INFO */
                 ESP_LOGI(TAG, "%s", nmea_buf);
+            } else if (strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
+                /* Other periodic PAIR telemetry ($PAIR010 etc.) at DEBUG */
+                ESP_LOGD(TAG, "%s", nmea_buf);
             }
         } else if (b != '\r' && nmea_idx < NMEA_MAX_LINE - 1) {
             nmea_buf[nmea_idx++] = b;
@@ -351,9 +355,10 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
                     break;
                 }
             } else if (b == 0xD3) {
-                /* RTCM3 preamble — module is running in base mode */
+                /* RTCM3 preamble — module booted from saved base config */
                 if (++rtcm_d3 >= 3) {
                     active_baud = try_bauds[bi];
+                    s_booted_in_base = true;
                     ESP_LOGI(TAG, "LC29H (RTCM/base mode) detected at %d baud", active_baud);
                     break;
                 }
@@ -378,14 +383,18 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
     xTaskCreate(gnss_reader_task, "gnss_reader", 4096, NULL, 18, NULL);
     vTaskDelay(pdMS_TO_TICKS(50));  /* let task start so PQTM response lands in parser */
 
-    /*
-     * Set RTK rover mode.  Without this the LC29H default is standalone GNSS
-     * and RTCM3 bytes arriving on the RX pin are silently discarded.
-     * Expected response logged by reader: $PQTMCFGRCVRMODE,OK,1*XX
-     */
-    pqtm_send("PQTMCFGRCVRMODE,W,1");
-
-    ESP_LOGI(TAG, "LC29H ready TX=%d RX=%d — RTK rover mode requested", tx_pin, rx_pin);
+    if (s_booted_in_base) {
+        /* Module loaded its saved base-station config and is already outputting
+         * RTCM.  Do NOT switch it to rover mode — that wipes the survey-in
+         * accumulation that started at power-on.  gnss_start_survey_in() will
+         * skip reconfiguration for the same reason. */
+        ESP_LOGI(TAG, "LC29H ready TX=%d RX=%d — preserving saved base mode", tx_pin, rx_pin);
+    } else {
+        /* First boot or rover board: set RTK rover mode so incoming RTCM bytes
+         * on the RX pin are accepted instead of discarded. */
+        pqtm_send("PQTMCFGRCVRMODE,W,1");
+        ESP_LOGI(TAG, "LC29H ready TX=%d RX=%d — RTK rover mode requested", tx_pin, rx_pin);
+    }
     return ESP_OK;
 }
 
@@ -434,37 +443,49 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
 }
 
 /*
- * Start survey-in.
- * acc_limit in PQTM units = 0.0001 m (same as ZED-F9P TMODE3 convention).
- * Example: 2.0 m → 20000.
+ * Configure and start survey-in on the LC29H base station.
+ * acc_limit_m is in metres; converted to PQTM units (0.0001 m each) before
+ * sending (e.g. 2.0 m → 20000).  Must be called while gnss_init() has left
+ * the module in rover mode (PQTMCFGRCVRMODE,W,1).
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
+    if (s_booted_in_base) {
+        /* Module is running from its saved flash config; survey-in is already
+         * accumulating observations from power-on.  Re-sending PQTMCFGRCVRMODE
+         * would reset the accumulated position estimate — skip entirely. */
+        ESP_LOGI(TAG, "Survey-in already running from saved config — not reconfiguring");
+        return ESP_OK;
+    }
+
     /*
-     * Correct LC29H base station configuration sequence.
-     * Key findings from protocol spec:
-     *   - Survey-in command is PQTMCFGSVIN, not PQTMSVIN
-     *   - RTCM output uses $PAIR4xx commands, not $PQTMCFGRTCM
-     *   - All config must be sent in ROVER mode before switching to base
-     *   - PQTMSAVEPAR + PQTMSRR (restart) are required to apply settings
-     *
-     * gnss_init() leaves the module in rover mode (W,1) — confirmed OK,1.
+     * First-time setup (module was in rover/NMEA mode at boot).
+     * All config must be sent while in rover mode, then switch to base.
+     * PQTMSAVEPAR persists settings; PQTMSRR restarts the module to load them
+     * cleanly.  If PQTMSRR returns ERROR,3, power-cycle the base once — it
+     * will then boot directly into base mode and survey-in starts from t=0.
      */
 
     /* ── RTCM message enables ───────────────────────────────────────────── */
-    pqtm_send("PAIR432,1");   /* RTCM MSM7 observations */
+    /* MSM4 (compressed) instead of MSM7 (full): ~40% smaller frames,
+     * sufficient for centimetre-level RTK, fits inside 9600-baud LoRa link. */
+    pqtm_send("PAIR432,0");   /* disable MSM7 — overflows LoRa at 9.6 kbps */
     vTaskDelay(pdMS_TO_TICKS(200));
-    pqtm_send("PAIR434,1");   /* RTCM 1005 — antenna reference point */
+    pqtm_send("PAIR430,1");   /* enable MSM4 (1074/1084/1094/1124) */
     vTaskDelay(pdMS_TO_TICKS(200));
-    pqtm_send("PAIR436,1");   /* RTCM ephemeris messages */
+    pqtm_send("PAIR434,1");   /* 1005 ARP — required by rover for RTK */
+    vTaskDelay(pdMS_TO_TICKS(200));
+    pqtm_send("PAIR436,0");   /* disable ephemeris — rover tracks its own */
     vTaskDelay(pdMS_TO_TICKS(200));
 
     /* ── Survey-in ─────────────────────────────────────────────────────── */
-    /* PQTMCFGSVIN,W,<mode>,<min_dur_s>,<acc_m>,<ecef_x>,<ecef_y>,<ecef_z>
-     * mode=1 survey-in; ecef 0,0,0 = use autonomous position averaging    */
+    /* PQTMCFGSVIN accuracy is in PQTM units of 0.0001 m (= 0.1 mm), the same
+     * convention as ZED-F9P TMODE3.  2.0 m = 20000 units.  The caller passes
+     * metres, so convert before sending. */
+    uint32_t acc_pqtm = (uint32_t)(acc_limit_m * 10000.0f + 0.5f);
     char body[72];
-    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%.1f,0,0,0",
-             (unsigned long)min_dur_s, acc_limit_m);
+    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%lu,0,0,0",
+             (unsigned long)min_dur_s, (unsigned long)acc_pqtm);
     pqtm_send(body);
     vTaskDelay(pdMS_TO_TICKS(200));
 
