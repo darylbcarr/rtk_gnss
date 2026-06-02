@@ -441,6 +441,16 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     pqtm_send("PQTMCFGRCVRMODE,R");
     vTaskDelay(pdMS_TO_TICKS(200));
 
+    /*
+     * Enable RTCM output.  In base mode the LC29H does not emit RTCM until
+     * it is explicitly enabled.  Response and current config are both logged
+     * by the reader task — paste them if RTCM still doesn't flow.
+     */
+    pqtm_send("PQTMCFGRTCM,W,1");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    pqtm_send("PQTMCFGRTCM,R");   /* read back for diagnostics */
+    vTaskDelay(pdMS_TO_TICKS(200));
+
     /* Clear any survey-in left over from a previous session. */
     pqtm_send("PQTMSVIN,W,0");
     vTaskDelay(pdMS_TO_TICKS(200));
@@ -454,8 +464,7 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     char body[48];
     snprintf(body, sizeof(body), "PQTMSVIN,W,1,%lu", (unsigned long)min_dur_s);
     pqtm_send(body);
-    ESP_LOGI(TAG, "Survey-in start sent: min=%lus (acc_limit handled by module)",
-             (unsigned long)min_dur_s);
+    ESP_LOGI(TAG, "Survey-in start sent: min=%lus", (unsigned long)min_dur_s);
     return ESP_OK;
 }
 
