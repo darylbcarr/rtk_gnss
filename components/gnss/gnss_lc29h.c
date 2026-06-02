@@ -431,40 +431,38 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
-    (void)acc_limit_m;  /* not passed to LC29H — see note below */
-
-    /* Switch to base-station receiver mode. */
-    pqtm_send("PQTMCFGRCVRMODE,W,2");
-    vTaskDelay(pdMS_TO_TICKS(500));   /* allow mode transition to stabilise */
-
-    /* Query back to confirm; response logged by reader task. */
-    pqtm_send("PQTMCFGRCVRMODE,R");
-    vTaskDelay(pdMS_TO_TICKS(200));
+    (void)acc_limit_m;
 
     /*
-     * Enable RTCM output.  In base mode the LC29H does not emit RTCM until
-     * it is explicitly enabled.  Response and current config are both logged
-     * by the reader task — paste them if RTCM still doesn't flow.
+     * The LC29H returns ERROR,3 for any W command sent while in base mode
+     * (mode=2) — even PQTMCFGRTCM and PQTMSVIN.  gnss_init() leaves the
+     * module in rover mode (W,1), so all configuration must be issued here
+     * before switching to base mode.  PQTMCFGRCVRMODE,W,2 goes LAST.
      */
+
+    /* Enable RTCM output (while still in rover mode). */
     pqtm_send("PQTMCFGRTCM,W,1");
     vTaskDelay(pdMS_TO_TICKS(200));
-    pqtm_send("PQTMCFGRTCM,R");   /* read back for diagnostics */
-    vTaskDelay(pdMS_TO_TICKS(200));
 
-    /* Clear any survey-in left over from a previous session. */
+    /* Clear any stale survey-in state. */
     pqtm_send("PQTMSVIN,W,0");
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    /*
-     * Start survey-in.  The four-parameter form (mode,minDur,accLimit) returns
-     * ERROR,3 on tested LC29H firmware; the three-parameter form is accepted.
-     * The module converges on its own position-stability criterion when no
-     * accLimit is supplied.
-     */
+    /* Arm survey-in (takes effect when base mode is activated below). */
     char body[48];
     snprintf(body, sizeof(body), "PQTMSVIN,W,1,%lu", (unsigned long)min_dur_s);
     pqtm_send(body);
-    ESP_LOGI(TAG, "Survey-in start sent: min=%lus", (unsigned long)min_dur_s);
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    /* Switch to base mode — activates RTCM output and survey-in. */
+    pqtm_send("PQTMCFGRCVRMODE,W,2");
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    /* Read back to confirm; response logged by reader task. */
+    pqtm_send("PQTMCFGRCVRMODE,R");
+
+    ESP_LOGI(TAG, "Base mode activated, RTCM enabled, survey-in armed (min=%lus)",
+             (unsigned long)min_dur_s);
     return ESP_OK;
 }
 
