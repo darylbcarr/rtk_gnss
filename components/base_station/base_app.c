@@ -40,53 +40,15 @@ static void wait_survey_in(void)
         vTaskDelete(NULL);
     }
 
-    gnss_svin_t sv;
-    uint32_t    last_log_s = 0;
-
     /*
-     * Poll PQTMSVINSTATUS every 1 s and wait up to 30 s for the first
-     * status update.  If none arrives (e.g. $PQTMSVIN returned ERROR,3
-     * because this firmware outputs RTCM automatically in base mode without
-     * needing explicit survey-in), proceed to RTCM broadcast anyway.
+     * PQTMSVIN returns ERROR,3 on tested LC29H firmware — survey-in control
+     * is not available at runtime.  Module must be pre-configured once via
+     * Quectel GNSS Assistant (save RTCM messages + survey-in to flash).
+     * gnss_start_survey_in() already activated base mode; proceed immediately
+     * to RTCM broadcast.
      */
-    uint32_t poll_ticks    = 0;
-    uint32_t no_status_ms  = 0;
-#define SVIN_TIMEOUT_MS  30000u
-
-    for (;;) {
-        if (gnss_get_svin_status(&sv)) {
-            no_status_ms = 0;
-
-            xSemaphoreTake(s_svin_lock, portMAX_DELAY);
-            s_last_svin = sv;
-            xSemaphoreGive(s_svin_lock);
-
-            if (sv.dur_s != last_log_s) {
-                log_svin_progress(&sv);
-                last_log_s = sv.dur_s;
-            }
-
-            if (sv.valid) {
-                ESP_LOGI(TAG, "Survey-in converged at t=%lus, acc=%.3fm — starting broadcast",
-                         (unsigned long)sv.dur_s, sv.mean_acc_m);
-                return;
-            }
-        } else {
-            no_status_ms += 200;
-            if (no_status_ms >= SVIN_TIMEOUT_MS) {
-                ESP_LOGW(TAG,
-                    "No $PQTMSVINSTATUS in %lu s — LC29H may output RTCM "
-                    "automatically in base mode; proceeding to broadcast",
-                    (unsigned long)(SVIN_TIMEOUT_MS / 1000));
-                return;
-            }
-        }
-
-        if (++poll_ticks % 5 == 0)
-            gnss_poll_svin_status();
-
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
+    ESP_LOGI(TAG, "Proceeding to RTCM broadcast "
+             "(PQTMSVIN not supported on this firmware — pre-configure via GNSS Assistant)");
 }
 
 /* ── RTCM broadcast phase ────────────────────────────────────────────── */
