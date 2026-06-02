@@ -65,6 +65,12 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m);
 bool gnss_get_svin_status(gnss_svin_t *out);
 
 /*
+ * Request a fresh survey-in status from the module ($PQTMSVINSTATUS,R).
+ * Use this when the module does not emit status autonomously.
+ */
+void gnss_poll_svin_status(void);
+
+/*
  * Read one complete RTCM3 frame from the module output stream.
  * Blocks until a frame arrives or timeout_ms elapses.
  * Returns frame byte count on success, 0 on timeout, -1 on error.

@@ -43,6 +43,10 @@ static void wait_survey_in(void)
     gnss_svin_t sv;
     uint32_t    last_log_s = 0;
 
+    /* Poll counter: send $PQTMSVINSTATUS,R every 1 s in case the module
+     * does not emit it autonomously after $PQTMSVIN,W,1. */
+    uint32_t poll_ticks = 0;
+
     for (;;) {
         if (gnss_get_svin_status(&sv)) {
             xSemaphoreTake(s_svin_lock, portMAX_DELAY);
@@ -60,6 +64,12 @@ static void wait_survey_in(void)
                 return;
             }
         }
+
+        /* Poll every ~1 s (5 × 200 ms ticks) */
+        if (++poll_ticks % 5 == 0) {
+            gnss_poll_svin_status();
+        }
+
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }

@@ -431,21 +431,31 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
-    /*
-     * Switch to base-station receiver mode first.  gnss_init() sets rover
-     * mode (W,1) for all devices; override to base mode (W,2) here before
-     * commanding survey-in so the two modes don't conflict.
-     */
-    pqtm_send("PQTMCFGRCVRMODE,W,2");
-    vTaskDelay(pdMS_TO_TICKS(100));
+    (void)acc_limit_m;  /* not passed to LC29H — see note below */
 
-    char body[64];
-    uint32_t acc_01mm = (uint32_t)(acc_limit_m * 10000.0f);
-    snprintf(body, sizeof(body), "PQTMSVIN,W,1,%lu,%lu",
-             (unsigned long)min_dur_s, (unsigned long)acc_01mm);
+    /* Switch to base-station receiver mode. */
+    pqtm_send("PQTMCFGRCVRMODE,W,2");
+    vTaskDelay(pdMS_TO_TICKS(500));   /* allow mode transition to stabilise */
+
+    /* Query back to confirm; response logged by reader task. */
+    pqtm_send("PQTMCFGRCVRMODE,R");
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    /* Clear any survey-in left over from a previous session. */
+    pqtm_send("PQTMSVIN,W,0");
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    /*
+     * Start survey-in.  The four-parameter form (mode,minDur,accLimit) returns
+     * ERROR,3 on tested LC29H firmware; the three-parameter form is accepted.
+     * The module converges on its own position-stability criterion when no
+     * accLimit is supplied.
+     */
+    char body[48];
+    snprintf(body, sizeof(body), "PQTMSVIN,W,1,%lu", (unsigned long)min_dur_s);
     pqtm_send(body);
-    ESP_LOGI(TAG, "Survey-in started: min=%lus acc_limit=%.2fm (%lu × 0.1mm)",
-             (unsigned long)min_dur_s, acc_limit_m, (unsigned long)acc_01mm);
+    ESP_LOGI(TAG, "Survey-in start sent: min=%lus (acc_limit handled by module)",
+             (unsigned long)min_dur_s);
     return ESP_OK;
 }
 
@@ -459,6 +469,11 @@ bool gnss_get_svin_status(gnss_svin_t *out)
     }
     xSemaphoreGive(s_svin_mutex);
     return updated;
+}
+
+void gnss_poll_svin_status(void)
+{
+    pqtm_send("PQTMSVINSTATUS,R");
 }
 
 int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)

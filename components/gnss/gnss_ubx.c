@@ -375,3 +375,5 @@ int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)
     (void)buf; (void)max_len; (void)timeout_ms;
     return 0;
 }
+
+void gnss_poll_svin_status(void) { /* UBX driver polls via NAV-SVIN poll, not yet implemented */ }
