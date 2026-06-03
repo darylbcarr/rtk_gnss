@@ -34,8 +34,12 @@ typedef struct {
 /*
  * Initialize GNSS on the given UART.  Starts a background reader task
  * that demultiplexes the NMEA/RTCM3 mixed stream.
+ * nreset_pin: GPIO wired to the module's active-low NRESET; pass -1 if
+ * not connected.  When connected, gnss_start_survey_in() uses a hardware
+ * pulse to restart the module after saving config, instead of relying on
+ * the software PQTMSRR command (which fails on some LC29H firmware builds).
  */
-esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin);
+esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin);
 
 /*
  * Block until a fresh position fix is available or timeout_ms elapses.

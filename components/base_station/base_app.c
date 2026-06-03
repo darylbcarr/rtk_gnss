@@ -81,6 +81,21 @@ static void broadcast_rtcm(void)
     for (;;) {
         /* Block until the first frame of an epoch arrives */
         int len = gnss_read_rtcm(buf, sizeof(buf), RTCM_TIMEOUT_MS);
+
+        /* Log every 10 s whether or not frames arrived */
+        {
+            uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+            if (now - last_log >= 10000) {
+                if (frames == 0)
+                    ESP_LOGW(TAG, "RTCM broadcast: no frames yet — module may need power-cycle");
+                else
+                    ESP_LOGI(TAG, "RTCM broadcast: %lu frames %lu B %lu errors  arb=%s",
+                             (unsigned long)frames, (unsigned long)bytes, (unsigned long)errors,
+                             saw_arb ? "YES" : "NO");
+                last_log = now;
+            }
+        }
+
         if (len < 0) { errors++; continue; }
         if (len == 0) continue;
 
@@ -132,13 +147,6 @@ static void broadcast_rtcm(void)
             }
         }
 
-        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        if (now - last_log >= 10000) {
-            ESP_LOGI(TAG, "RTCM broadcast: %lu frames %lu B %lu errors  arb=%s",
-                     (unsigned long)frames, (unsigned long)bytes, (unsigned long)errors,
-                     saw_arb ? "YES" : "NO");
-            last_log = now;
-        }
     }
 }
 

@@ -1,5 +1,6 @@
 #include "gnss.h"
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -21,6 +22,7 @@ static const char *TAG = "gnss";
 
 static uart_port_t       s_uart;
 static bool              s_booted_in_base;   /* RTCM detected at init — saved config intact */
+static int               s_nreset_pin = -1;  /* GPIO wired to NRESET, or -1 if not connected */
 static SemaphoreHandle_t s_tx_mutex;
 
 /* Background reader queues */
@@ -303,9 +305,22 @@ static void gnss_reader_task(void *arg)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
+esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
 {
-    s_uart = port;
+    s_uart       = port;
+    s_nreset_pin = nreset_pin;
+
+    if (nreset_pin >= 0) {
+        gpio_config_t rst_cfg = {
+            .pin_bit_mask = 1ULL << nreset_pin,
+            .mode         = GPIO_MODE_OUTPUT,
+            .pull_up_en   = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type    = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&rst_cfg);
+        gpio_set_level((gpio_num_t)nreset_pin, 1);   /* deassert — active low */
+    }
 
     s_tx_mutex   = xSemaphoreCreateMutex();
     s_pvt_queue  = xQueueCreate(1, sizeof(gnss_pvt_t));
@@ -449,25 +464,20 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
 
 /*
  * Configure and start survey-in on the LC29H base station.
- * acc_limit_m is in metres; converted to PQTM units (0.0001 m each) before
- * sending (e.g. 2.0 m → 20000).  Must be called while gnss_init() has left
- * the module in rover mode (PQTMCFGRCVRMODE,W,1).
+ * acc_limit_m is in metres; PQTMCFGSVIN expects centimetres, so 2.0 m → 200 cm.
+ * Safe to call whether the module booted in rover or base mode.
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
     /*
-     * If the module booted from saved base config (s_booted_in_base), gnss_init()
-     * preserved that mode rather than resetting to rover.  We still need to
-     * apply the combined PQTMCFGRCVRMODE,W,2,1,... command so survey-in actually
-     * starts — the old separate PQTMCFGSVIN,W approach only stored parameters
-     * without activating position averaging.  Briefly switch to rover mode first
-     * so the PAIR enable commands are accepted; the combined mode command that
-     * follows will switch back to base and start survey-in.
+     * If the module booted from saved base config, stay in base mode.
+     * PQTMCFGSVIN,W is only accepted in base mode; switching to rover first
+     * causes it to be silently rejected, after which PQTMCFGRCVRMODE,W,2 also
+     * fails (ERROR,1) because there is no accepted SVIN config to transition to.
+     * PAIR RTCM-enable commands work in both modes, so no rover dance is needed.
      */
     if (s_booted_in_base) {
-        pqtm_send("PQTMCFGRCVRMODE,W,1");
-        vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "Briefly in rover mode to apply updated base config");
+        ESP_LOGI(TAG, "Booted in base mode — applying SVIN config in-place");
     }
 
     /* ── RTCM message enables ───────────────────────────────────────────── */
@@ -482,39 +492,54 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     pqtm_send("PAIR436,0");   /* disable ephemeris — rover tracks its own */
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    /* ── Switch to base mode + start survey-in (combined command) ──────────── */
+    /* ── Survey-in configuration ────────────────────────────────────────────── */
     /*
-     * PQTMCFGRCVRMODE,W,2,1,<minDur>,<accLimit>,0,0,0 simultaneously:
-     *   - sets receiver to base station mode (mode=2)
-     *   - configures survey-in (type=1, not fixed-position)
-     *   - sets convergence criteria (minDur seconds, accLimit metres)
-     *   - leaves ECEF at 0,0,0 (autonomous position averaging)
+     * PQTMCFGSVIN accuracy is in centimetres — the same unit as the meanAcc
+     * field in $PQTMSVINSTATUS (which parse_svinstatus multiplies by 0.01 to
+     * convert to metres).  Sending "2.0" means 2 cm, which standalone GNSS
+     * can never achieve, so survey-in runs forever without converging.
+     * Convert the caller's metres value to centimetres before sending.
+     * Example: acc_limit_m=2.0 → 200 cm → survey-in converges outdoors in
+     * roughly 5-10 minutes with a good sky view.
      *
-     * Sending PQTMCFGSVIN,W + PQTMCFGRCVRMODE,W,2 as two separate commands
-     * stores the survey-in parameters but does NOT activate position averaging.
-     * The combined form activates it at the same time as the mode switch.
+     * PQTMCFGSVIN,W is only accepted in base mode (returns no response and is
+     * silently ignored when the module is in rover mode).
      */
-    char body[80];
-    snprintf(body, sizeof(body), "PQTMCFGRCVRMODE,W,2,1,%lu,%.4f,0,0,0",
-             (unsigned long)min_dur_s, (double)acc_limit_m);
+    uint32_t acc_cm = (uint32_t)(acc_limit_m * 100.0f + 0.5f);
+    char body[72];
+    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%lu,0,0,0",
+             (unsigned long)min_dur_s, (unsigned long)acc_cm);
     pqtm_send(body);
-    vTaskDelay(pdMS_TO_TICKS(500));  /* extra settle time for mode + svin init */
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    /* ── Switch to base mode (only needed on first boot from rover) ─────── */
+    if (!s_booted_in_base) {
+        pqtm_send("PQTMCFGRCVRMODE,W,2");
+        vTaskDelay(pdMS_TO_TICKS(300));
+    }
 
     /* ── Save to flash ──────────────────────────────────────────────────── */
     pqtm_send("PQTMSAVEPAR");
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    /* ── Restart module — required for all settings to take effect ──────── */
-    /* PQTMSRR returns ERROR,3 on some firmware; if so the config is still
-     * saved — power-cycle the base once and it will boot in base mode. */
-    ESP_LOGI(TAG, "Requesting LC29H restart to apply saved configuration…");
-    pqtm_send("PQTMSRR");
+    /* ── Restart module to apply saved configuration ────────────────────── */
+    if (s_nreset_pin >= 0) {
+        /* Hardware reset: pulse NRESET low for 100 ms, then wait for boot */
+        ESP_LOGI(TAG, "LC29H hardware reset via GPIO %d", s_nreset_pin);
+        gpio_set_level((gpio_num_t)s_nreset_pin, 0);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        gpio_set_level((gpio_num_t)s_nreset_pin, 1);
+        vTaskDelay(pdMS_TO_TICKS(2000));   /* module boot time */
+        s_booted_in_base = true;           /* module now running saved base config */
+    } else {
+        /* Software reset fallback — returns ERROR,3 on some firmware builds.
+         * If it fails, power-cycle the base once to apply the saved config. */
+        ESP_LOGI(TAG, "Requesting LC29H software reset (PQTMSRR)…");
+        pqtm_send("PQTMSRR");
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
 
-    /* 5 s wait: if restart succeeded the module re-initialises here */
-    vTaskDelay(pdMS_TO_TICKS(5000));
-
-    ESP_LOGI(TAG, "LC29H base init done — survey-in min=%lus acc=%.1fm "
-             "(if PQTMSRR gave ERROR,3: power-cycle once to apply saved config)",
+    ESP_LOGI(TAG, "LC29H base init done — survey-in min=%lus acc=%.1fm",
              (unsigned long)min_dur_s, acc_limit_m);
     return ESP_OK;
 }

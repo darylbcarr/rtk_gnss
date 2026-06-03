@@ -214,8 +214,9 @@ static void valset_u1(uint32_t key, uint8_t val)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
+esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
 {
+    (void)nreset_pin;   /* ZED-F9P reset handled externally */
     s_uart = port;
     memset(&s_parser, 0, sizeof(s_parser));
     if (!s_tx_mutex) s_tx_mutex = xSemaphoreCreateMutex();

@@ -26,9 +26,10 @@ static const char *TAG = "app";
 
 /* ── Pin assignments ─────────────────────────────────────────────────── */
 
-#define GNSS_UART    UART_NUM_1
-#define GNSS_TX_PIN  6
-#define GNSS_RX_PIN  1
+#define GNSS_UART       UART_NUM_1
+#define GNSS_TX_PIN     6
+#define GNSS_RX_PIN     1
+#define GNSS_NRESET_PIN CONFIG_GNSS_NRESET_PIN
 
 #define I2C_PORT     I2C_NUM_0
 #define I2C_SDA_PIN  8
@@ -173,7 +174,7 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, "LoRa transport init failed — continuing without LoRa");
 
     /* ── GNSS ──── */
-    if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN) != ESP_OK) {
+    if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN, GNSS_NRESET_PIN) != ESP_OK) {
         ESP_LOGE(TAG, "GNSS init failed — halting");
         return;
     }

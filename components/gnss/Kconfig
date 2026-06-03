@@ -9,3 +9,16 @@ choice GNSS_DRIVER
         bool "Quectel LC29H (NMEA protocol)"
 
 endchoice
+
+config GNSS_NRESET_PIN
+    int "LC29H NRESET GPIO pin (-1 = not connected)"
+    default -1
+    range -1 48
+    depends on GNSS_DRIVER_LC29H
+    help
+        GPIO number wired to the LC29H active-low NRESET pin.
+        When set, the firmware pulses this pin after saving base-station
+        config instead of relying on the PQTMSRR software reset (which
+        returns ERROR,3 on some firmware builds).  Set to -1 if NRESET
+        is not wired — a manual power-cycle is then required after the
+        first base configuration.
