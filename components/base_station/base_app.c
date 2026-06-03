@@ -10,7 +10,8 @@
 
 static const char *TAG = "base";
 
-#define RTCM_BUF_SIZE  1029   /* max RTCM3 frame */
+#define RTCM_BUF_SIZE   1029          /* max RTCM3 frame */
+#define RTCM_BATCH_SIZE (1029 * 8)    /* ~8 frames per epoch — enough for any burst */
 #define RTCM_TIMEOUT_MS 2000
 
 /* Task state */
@@ -66,56 +67,76 @@ static void broadcast_rtcm(void)
     }
 
     static uint8_t  buf[RTCM_BUF_SIZE];
-    uint32_t        frames   = 0;
-    uint32_t        bytes    = 0;
-    uint32_t        errors   = 0;
-    uint32_t        last_log = (uint32_t)(esp_timer_get_time() / 1000);
-    bool            saw_1005 = false;
+    static uint8_t  batch[RTCM_BATCH_SIZE];  /* accumulate a full epoch before sending */
+    uint32_t        frames     = 0;
+    uint32_t        bytes      = 0;
+    uint32_t        errors     = 0;
+    uint32_t        last_log   = (uint32_t)(esp_timer_get_time() / 1000);
+    bool            saw_arb    = false;   /* saw 1005 or 1006 — base has valid position */
 
-    /* Track unique RTCM types going out — first occurrence logged at INFO */
+    /* Track unique outbound RTCM types — first occurrence logged at INFO */
     uint16_t        tx_types[16];
     uint8_t         n_tx_types = 0;
 
     for (;;) {
+        /* Block until the first frame of an epoch arrives */
         int len = gnss_read_rtcm(buf, sizeof(buf), RTCM_TIMEOUT_MS);
         if (len < 0) { errors++; continue; }
+        if (len == 0) continue;
 
-        if (len > 0) {
+        /* Accumulate this frame plus any that arrived simultaneously (non-blocking drain) */
+        int  batch_len    = 0;
+        uint32_t batch_frames = 0;
+
+        do {
+            if (len < 0) { errors++; break; }
+
+            /* Per-frame type tracking */
             if (len >= 6 && buf[0] == 0xD3) {
                 uint16_t mt = ((uint16_t)(buf[3] & 0xFF) << 4) | (buf[4] >> 4);
-
-                /* Log each type the first time it appears */
                 bool dup = false;
-                for (uint8_t i = 0; i < n_tx_types; i++) if (tx_types[i] == mt) { dup = true; break; }
+                for (uint8_t i = 0; i < n_tx_types; i++)
+                    if (tx_types[i] == mt) { dup = true; break; }
                 if (!dup && n_tx_types < 16) {
                     tx_types[n_tx_types++] = mt;
                     ESP_LOGI(TAG, "Outbound RTCM type %u (total types: %u)", mt, n_tx_types);
                 }
-
-                /* 1005 = survey-in has a valid base position */
-                if (mt == 1005 && !saw_1005) {
-                    saw_1005 = true;
-                    ESP_LOGI(TAG, "Survey-in converged — RTCM 1005 in stream");
+                /* 1005 = ARP without height, 1006 = ARP with height — both signal convergence */
+                if ((mt == 1005 || mt == 1006) && !saw_arb) {
+                    saw_arb = true;
+                    ESP_LOGI(TAG, "Survey-in converged — RTCM %u in stream", mt);
                 }
             }
 
-            if (s_transport) {
-                int sent = transport_send(s_transport, buf, (size_t)len);
-                if (sent < 0) {
-                    errors++;
-                    ESP_LOGW(TAG, "LoRa send error for %d B frame", len);
-                } else {
-                    frames++;
-                    bytes += (uint32_t)len;
-                }
+            if (batch_len + len <= (int)sizeof(batch)) {
+                memcpy(batch + batch_len, buf, (size_t)len);
+                batch_len += len;
+                batch_frames++;
+            } else {
+                ESP_LOGW(TAG, "Batch full — dropped %d B frame", len);
+            }
+
+            /* Try to read another frame immediately (timeout=0 → non-blocking) */
+            len = gnss_read_rtcm(buf, sizeof(buf), 0);
+        } while (len != 0);
+
+        /* Send the whole epoch in one LoRa call: one wait_aux_high instead of N */
+        if (s_transport && batch_len > 0) {
+            int sent = transport_send(s_transport, batch, (size_t)batch_len);
+            if (sent < 0) {
+                errors++;
+                ESP_LOGW(TAG, "LoRa send error for %d B batch", batch_len);
+            } else {
+                frames += batch_frames;
+                bytes  += (uint32_t)batch_len;
             }
         }
 
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
         if (now - last_log >= 10000) {
-            ESP_LOGI(TAG, "RTCM broadcast: %lu frames %lu B %lu errors  1005=%s",
+            ESP_LOGI(TAG, "RTCM broadcast: %lu frames %lu B %lu errors  arb=%s",
                      (unsigned long)frames, (unsigned long)bytes, (unsigned long)errors,
-                     saw_1005 ? "YES" : "NO");
+                     saw_arb ? "YES" : "NO");
             last_log = now;
         }
     }
