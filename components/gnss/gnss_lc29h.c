@@ -455,21 +455,20 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
  */
 esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 {
-    if (s_booted_in_base) {
-        /* Module is running from its saved flash config; survey-in is already
-         * accumulating observations from power-on.  Re-sending PQTMCFGRCVRMODE
-         * would reset the accumulated position estimate — skip entirely. */
-        ESP_LOGI(TAG, "Survey-in already running from saved config — not reconfiguring");
-        return ESP_OK;
-    }
-
     /*
-     * First-time setup (module was in rover/NMEA mode at boot).
-     * All config must be sent while in rover mode, then switch to base.
-     * PQTMSAVEPAR persists settings; PQTMSRR restarts the module to load them
-     * cleanly.  If PQTMSRR returns ERROR,3, power-cycle the base once — it
-     * will then boot directly into base mode and survey-in starts from t=0.
+     * If the module booted from saved base config (s_booted_in_base), gnss_init()
+     * preserved that mode rather than resetting to rover.  We still need to
+     * apply the combined PQTMCFGRCVRMODE,W,2,1,... command so survey-in actually
+     * starts — the old separate PQTMCFGSVIN,W approach only stored parameters
+     * without activating position averaging.  Briefly switch to rover mode first
+     * so the PAIR enable commands are accepted; the combined mode command that
+     * follows will switch back to base and start survey-in.
      */
+    if (s_booted_in_base) {
+        pqtm_send("PQTMCFGRCVRMODE,W,1");
+        vTaskDelay(pdMS_TO_TICKS(500));
+        ESP_LOGI(TAG, "Briefly in rover mode to apply updated base config");
+    }
 
     /* ── RTCM message enables ───────────────────────────────────────────── */
     /* MSM4 (compressed) instead of MSM7 (full): ~40% smaller frames,
