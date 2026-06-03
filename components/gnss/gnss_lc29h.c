@@ -349,7 +349,12 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin)
             if (uart_read_bytes(port, &b, 1, pdMS_TO_TICKS(10)) != 1) continue;
             if (b == '\n') {
                 line[li] = '\0'; li = 0;
-                if (line[0] == '$' && strlen(line) > 5) {
+                /* Require a real GNSS NMEA talker prefix ($G, $P, $N, …).
+                 * The LC29H outputs a startup diagnostic like "$1,20381121,…"
+                 * before entering normal mode — its second character is a digit,
+                 * not a letter, so we skip it and keep watching for RTCM. */
+                if (line[0] == '$' && strlen(line) > 5 &&
+                    line[1] >= 'A' && line[1] <= 'Z') {
                     active_baud = try_bauds[bi];
                     ESP_LOGI(TAG, "LC29H (NMEA) detected at %d baud: %s", active_baud, line);
                     break;
@@ -479,14 +484,15 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     vTaskDelay(pdMS_TO_TICKS(200));
 
     /* ── Survey-in ─────────────────────────────────────────────────────── */
-    /* PQTMCFGSVIN accuracy is in PQTM units of 0.0001 m (= 0.1 mm), the same
-     * convention as ZED-F9P TMODE3.  2.0 m = 20000 units.  The caller passes
-     * metres, so convert before sending. */
-    uint32_t acc_pqtm = (uint32_t)(acc_limit_m * 10000.0f + 0.5f);
+    /* PQTMCFGSVIN accuracy is in metres (float).  20000 triggers ERROR,1;
+     * 2.0 is accepted.  Send a readback ($PQTMCFGSVIN,R) immediately after
+     * so the monitor log confirms the applied values. */
     char body[72];
-    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%lu,0,0,0",
-             (unsigned long)min_dur_s, (unsigned long)acc_pqtm);
+    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%.4f,0,0,0",
+             (unsigned long)min_dur_s, (double)acc_limit_m);
     pqtm_send(body);
+    vTaskDelay(pdMS_TO_TICKS(200));
+    pqtm_send("PQTMCFGSVIN,R");   /* response logged by reader — verify applied params */
     vTaskDelay(pdMS_TO_TICKS(200));
 
     /* ── Switch to base mode (last config step) ─────────────────────────── */
