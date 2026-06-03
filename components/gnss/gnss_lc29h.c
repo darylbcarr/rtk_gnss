@@ -483,21 +483,23 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     pqtm_send("PAIR436,0");   /* disable ephemeris — rover tracks its own */
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    /* ── Survey-in ─────────────────────────────────────────────────────── */
-    /* PQTMCFGSVIN accuracy is in metres (float).  20000 triggers ERROR,1;
-     * 2.0 is accepted.  Send a readback ($PQTMCFGSVIN,R) immediately after
-     * so the monitor log confirms the applied values. */
-    char body[72];
-    snprintf(body, sizeof(body), "PQTMCFGSVIN,W,1,%lu,%.4f,0,0,0",
+    /* ── Switch to base mode + start survey-in (combined command) ──────────── */
+    /*
+     * PQTMCFGRCVRMODE,W,2,1,<minDur>,<accLimit>,0,0,0 simultaneously:
+     *   - sets receiver to base station mode (mode=2)
+     *   - configures survey-in (type=1, not fixed-position)
+     *   - sets convergence criteria (minDur seconds, accLimit metres)
+     *   - leaves ECEF at 0,0,0 (autonomous position averaging)
+     *
+     * Sending PQTMCFGSVIN,W + PQTMCFGRCVRMODE,W,2 as two separate commands
+     * stores the survey-in parameters but does NOT activate position averaging.
+     * The combined form activates it at the same time as the mode switch.
+     */
+    char body[80];
+    snprintf(body, sizeof(body), "PQTMCFGRCVRMODE,W,2,1,%lu,%.4f,0,0,0",
              (unsigned long)min_dur_s, (double)acc_limit_m);
     pqtm_send(body);
-    vTaskDelay(pdMS_TO_TICKS(200));
-    pqtm_send("PQTMCFGSVIN,R");   /* response logged by reader — verify applied params */
-    vTaskDelay(pdMS_TO_TICKS(200));
-
-    /* ── Switch to base mode (last config step) ─────────────────────────── */
-    pqtm_send("PQTMCFGRCVRMODE,W,2");
-    vTaskDelay(pdMS_TO_TICKS(300));
+    vTaskDelay(pdMS_TO_TICKS(500));  /* extra settle time for mode + svin init */
 
     /* ── Save to flash ──────────────────────────────────────────────────── */
     pqtm_send("PQTMSAVEPAR");
