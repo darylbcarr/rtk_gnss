@@ -101,6 +101,25 @@ static void wifi_connect(void)
 
 #endif /* CONFIG_ROVER_CORRECTION_NTRIP */
 
+/* ── RTCM relay task ─────────────────────────────────────────────────── */
+
+/*
+ * Forwards RTCM correction bytes from the transport to the GNSS module as
+ * soon as they arrive, without waiting for the PVT poll loop.  Running as a
+ * dedicated task prevents up-to-1-second delivery delays that can prevent the
+ * LC29H from resolving integer ambiguity (RTK Float → Fix transition).
+ */
+static void rtcm_relay_task(void *arg)
+{
+    transport_t *src = (transport_t *)arg;
+    static uint8_t relay_buf[512];
+    for (;;) {
+        int n = transport_recv(src, relay_buf, sizeof(relay_buf), 100);
+        if (n > 0)
+            gnss_write_rtcm(relay_buf, (size_t)n);
+    }
+}
+
 /* ── app_main ────────────────────────────────────────────────────────── */
 
 extern "C" void app_main(void)
@@ -214,6 +233,9 @@ extern "C" void app_main(void)
         }
 #endif
 
+    if (correction_t)
+        xTaskCreate(rtcm_relay_task, "rtcm_relay", 4096, correction_t, 15, NULL);
+
     } else {
         /* Base: run survey-in then stream RTCM3 → LoRa */
         display_puts(0, 0, "BASE: SURVEY-IN");
@@ -230,7 +252,6 @@ extern "C" void app_main(void)
     /* ── Main loop ──── */
     gnss_pvt_t  pvt   = {};
     imu_data_t  imu_d = {};
-    uint8_t     rtcm_buf[512];
 
     for (;;) {
         /* In base mode the LC29H outputs RTCM only — no NMEA GGA is emitted.
@@ -250,29 +271,23 @@ extern "C" void app_main(void)
         if (imu_ok)
             imu_read(&imu_d);
 
-        /* Drain incoming RTCM corrections and forward to GNSS */
-        if (correction_t) {
-            int n;
-            while ((n = transport_recv(correction_t, rtcm_buf,
-                                       sizeof(rtcm_buf), 0)) > 0)
-                gnss_write_rtcm(rtcm_buf, (size_t)n);
-
+        /* RTCM corrections are forwarded in rtcm_relay_task — no inline drain needed.
+         * Update NTRIP caster position here so the server knows where the rover is. */
 #if CONFIG_ROVER_CORRECTION_NTRIP
-            if (mode == DEVICE_MODE_ROVER) {
-                ntrip_pos_t pos = {
-                    .lat       = pvt.lat,
-                    .lon       = pvt.lon,
-                    .alt_msl   = pvt.alt_msl,
-                    .i_tow     = pvt.i_tow,
-                    .pdop      = pvt.pdop,
-                    .fix_type  = pvt.fix_type,
-                    .carr_soln = pvt.carr_soln,
-                    .num_sv    = pvt.num_sv,
-                };
-                ntrip_update_position(&pos);
-            }
-#endif
+        if (correction_t) {
+            ntrip_pos_t pos = {
+                .lat       = pvt.lat,
+                .lon       = pvt.lon,
+                .alt_msl   = pvt.alt_msl,
+                .i_tow     = pvt.i_tow,
+                .pdop      = pvt.pdop,
+                .fix_type  = pvt.fix_type,
+                .carr_soln = pvt.carr_soln,
+                .num_sv    = pvt.num_sv,
+            };
+            ntrip_update_position(&pos);
         }
+#endif
 
         ui_tick(&pvt, &imu_d);
 

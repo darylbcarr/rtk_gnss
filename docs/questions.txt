@@ -285,3 +285,12 @@ There are four primary ways to establish this "Ground Truth":
 
 ※ recap: Migrating the RTK GNSS firmware from ZED-F9P to Quectel LC29H while preserving existing code via a Kconfig-selected driver split. Next step: rename gnss.c to gnss_ubx.c and add a Kconfig choice for the driver. (disable recaps in /config)
 
+=====================================
+
+  Remaining (in rough priority order):
+  1. transport/ vtable implementation — wraps NTRIP client and LoRa behind a common interface (this unlocks both Phase 2 and Phase 5 end-to-end)
+  2. WiFi STA + NVS config for SSID/NTRIP credentials
+  3. RTK FIX confirmation on OLED/LED
+  4. Fix-gated point capture + SD card (Phase 3)
+  5. Base station survey-in + RTCM broadcast (Phase 4)
+  6. LoRa fragmentation/CRC for RTCM relay (Phase 5 completion)

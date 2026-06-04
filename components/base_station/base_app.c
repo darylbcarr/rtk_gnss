@@ -11,7 +11,7 @@
 static const char *TAG = "base";
 
 #define RTCM_BUF_SIZE   1029          /* max RTCM3 frame */
-#define RTCM_BATCH_SIZE (1029 * 8)    /* ~8 frames per epoch — enough for any burst */
+#define RTCM_BATCH_SIZE (1029 * 12)   /* ~12 frames — sized for MSM4 epoch + all-constellation ephemeris burst */
 #define RTCM_TIMEOUT_MS 2000
 
 /* Task state */
@@ -114,7 +114,13 @@ static void broadcast_rtcm(void)
                     if (tx_types[i] == mt) { dup = true; break; }
                 if (!dup && n_tx_types < 16) {
                     tx_types[n_tx_types++] = mt;
-                    ESP_LOGI(TAG, "Outbound RTCM type %u (total types: %u)", mt, n_tx_types);
+                    /* Reference Station ID is at RTCM payload bits 12-23:
+                     * lower nibble of buf[4] combined with buf[5].
+                     * All message types from the same module must share one ID;
+                     * a mismatch between 1005 ARP and MSM frames prevents RTK FIX. */
+                    uint16_t sid = (len >= 6) ? (((uint16_t)(buf[4] & 0x0Fu) << 8) | buf[5]) : 0;
+                    ESP_LOGI(TAG, "Outbound RTCM type %u: %d B station=%u (total types: %u)",
+                             mt, len, sid, n_tx_types);
                 }
                 /* 1005 = ARP without height, 1006 = ARP with height — both signal convergence */
                 if ((mt == 1005 || mt == 1006) && !saw_arb) {

@@ -10,6 +10,19 @@ choice GNSS_DRIVER
 
 endchoice
 
+config GNSS_BASE_RTCM_EPHEMERIS
+    bool "Include satellite ephemeris in base RTCM output"
+    default n
+    depends on GNSS_DRIVER_LC29H
+    help
+        Include RTCM satellite ephemeris messages (GPS 1019, GLONASS 1020,
+        Galileo 1046, BeiDou 1042) in the base station RTCM output.
+        Disabled by default because each rover tracks its own ephemeris, but
+        some LC29H firmware builds require ephemeris in the RTCM stream to
+        start the integer ambiguity search (RTK Float → Fix transition).
+        Warning: adds burst bandwidth every 30-120 seconds — monitor LoRa
+        throughput if enabled.
+
 config GNSS_NRESET_PIN
     int "LC29H NRESET GPIO pin (-1 = not connected)"
     default -1

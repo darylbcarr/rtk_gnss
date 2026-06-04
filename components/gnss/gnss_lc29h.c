@@ -83,7 +83,8 @@ static uint32_t parse_utc_ms(const char *t)
 static bool parse_gga(char *line, gnss_pvt_t *pvt)
 {
     char *f[16];
-    if (nmea_split(line, f, 16) < 10) return false;
+    int nf = nmea_split(line, f, 16);
+    if (nf < 10) return false;
 
     int quality = atoi(f[6]);
     if (quality == 0) {
@@ -106,6 +107,34 @@ static bool parse_gga(char *line, gnss_pvt_t *pvt)
     pvt->carr_soln   = (quality == 4) ? 2 : (quality == 5) ? 1 : 0;
     pvt->fix_type    = (quality == 6) ? 1 : 3;
     pvt->gnss_fix_ok = true;
+
+    /*
+     * Differential corrections diagnostic: GGA fields 13 (age) and 14 (station).
+     * age=0-2 s means the LC29H is actively applying fresh corrections.
+     * age > 10 s means the last correction was long ago (or retained from a
+     * previous power cycle — which appears as quality=5 at boot before any
+     * RTCM arrives).  Log when quality, station, or age-band changes so we
+     * can see the exact moment fresh corrections kick in.
+     */
+    if (nf >= 15) {
+        float diff_age     = atof(f[13]);
+        int   diff_station = atoi(f[14]);
+        static float   s_last_age     = -999.0f;
+        static int     s_last_station = -1;
+        static int     s_last_quality = -1;
+        float age_delta = diff_age - s_last_age;
+        bool  age_band_changed = (age_delta > 5.0f || age_delta < -5.0f);
+        if (quality      != s_last_quality  ||
+            diff_station != s_last_station  ||
+            age_band_changed) {
+            ESP_LOGI(TAG, "GGA: quality=%d station=%d diff_age=%.1fs sv=%d",
+                     quality, diff_station, diff_age, pvt->num_sv);
+            s_last_age     = diff_age;
+            s_last_station = diff_station;
+            s_last_quality = quality;
+        }
+    }
+
     return true;
 }
 
@@ -290,12 +319,9 @@ static void gnss_reader_task(void *arg)
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
                 parse_svinstatus(nmea_buf);
             } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0 ||
-                       strncmp(nmea_buf + 1, "PAIR001", 7) == 0) {
-                /* Config ACKs ($PAIR001) and PQTM responses at INFO */
+                       strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
+                /* All PQTM and PAIR responses at INFO so query replies are visible */
                 ESP_LOGI(TAG, "%s", nmea_buf);
-            } else if (strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
-                /* Other periodic PAIR telemetry ($PAIR010 etc.) at DEBUG */
-                ESP_LOGD(TAG, "%s", nmea_buf);
             }
         } else if (b != '\r' && nmea_idx < NMEA_MAX_LINE - 1) {
             nmea_buf[nmea_idx++] = b;
@@ -364,10 +390,12 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
             if (uart_read_bytes(port, &b, 1, pdMS_TO_TICKS(10)) != 1) continue;
             if (b == '\n') {
                 line[li] = '\0'; li = 0;
-                /* Require a real GNSS NMEA talker prefix ($G, $P, $N, …).
-                 * The LC29H outputs a startup diagnostic like "$1,20381121,…"
-                 * before entering normal mode — its second character is a digit,
-                 * not a letter, so we skip it and keep watching for RTCM. */
+                /* The LC29H outputs a startup diagnostic like "$1,20381121,…"
+                 * before entering normal mode — its second character is a digit.
+                 * Log it (contains firmware build info) but keep scanning. */
+                if (line[0] == '$' && line[1] >= '0' && line[1] <= '9')
+                    ESP_LOGI(TAG, "LC29H startup: %s", line);
+                /* Require a real GNSS NMEA talker prefix ($G, $P, $N, …). */
                 if (line[0] == '$' && strlen(line) > 5 &&
                     line[1] >= 'A' && line[1] <= 'Z') {
                     active_baud = try_bauds[bi];
@@ -412,7 +440,21 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
     } else {
         /* First boot or rover board: set RTK rover mode so incoming RTCM bytes
          * on the RX pin are accepted instead of discarded. */
+        pqtm_send("PQTMVERNO");           /* firmware version query */
+        vTaskDelay(pdMS_TO_TICKS(100));
+        pqtm_send("PAIR002");             /* PAIR-protocol version query */
+        vTaskDelay(pdMS_TO_TICKS(100));
+        pqtm_send("PQTMCFGRTK,R");       /* read current RTK config */
+        vTaskDelay(pdMS_TO_TICKS(100));
         pqtm_send("PQTMCFGRCVRMODE,W,1");
+        vTaskDelay(pdMS_TO_TICKS(200));
+        pqtm_send("PQTMCFGRCVRMODE,R");   /* read back — expect OK,1 */
+        vTaskDelay(pdMS_TO_TICKS(100));
+        pqtm_send("PQTMCFGRTK,W,1,1");   /* RTK enabled, corrections enabled */
+        vTaskDelay(pdMS_TO_TICKS(200));
+        pqtm_send("PQTMSAVEPAR");         /* persist rover config to flash */
+        vTaskDelay(pdMS_TO_TICKS(500));
+        pqtm_send("PQTMCFGRTK,R");       /* read back — expect OK,1,1 */
         ESP_LOGI(TAG, "LC29H ready TX=%d RX=%d — RTK rover mode requested", tx_pin, rx_pin);
     }
     return ESP_OK;
@@ -434,20 +476,93 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
     static uint32_t s_last_log = 0;
 
     /*
-     * Log each unique RTCM3 message type the first time it's seen.
-     * This confirms what the caster is sending and that framing is valid.
-     * RTCM3 message type = first 12 payload bits = buf[3]<<4 | buf[4]>>4.
-     * Only works when buf[0]==0xD3 (frame-aligned chunk, typical for TCP recv).
+     * Stream-aware RTCM3 type and station-ID logger.  State persists across
+     * calls so chunks that split across frame boundaries are handled correctly.
+     *
+     * Reads the first 3 payload bytes of every frame:
+     *   payload[0..1] → 12-bit message type  (logged once per new type)
+     *   payload[1..2] → 12-bit reference station ID  (logged on first change)
+     *
+     * If 1005/1006 ARP and MSM observation frames have different station IDs
+     * the rover's RTK engine will not pair them and cannot resolve ambiguities.
+     *
+     * State machine: SYNC→L1→L2→P0→P1→P2→SKIP→SYNC
+     * Reserved bits [7:2] of L1 byte filter false sync positions.
      */
-    if (len >= 6 && buf[0] == 0xD3) {
-        uint16_t msg_type = ((uint16_t)(buf[3] & 0xFF) << 4) | (buf[4] >> 4);
+    {
+        typedef enum { RL_SYNC, RL_L1, RL_L2, RL_P0, RL_P1, RL_P2, RL_SKIP } rl_st_t;
+        static rl_st_t  rl_state  = RL_SYNC;
+        static uint16_t rl_plen;
+        static uint8_t  rl_p0;
+        static uint8_t  rl_p1;      /* saved so RL_P2 can compute station ID */
+        static uint16_t rl_mt;      /* saved message type for RL_P2 */
+        static uint16_t rl_remain;
         static uint16_t seen[20];
         static uint8_t  n_seen;
-        bool dup = false;
-        for (uint8_t i = 0; i < n_seen; i++) if (seen[i] == msg_type) { dup = true; break; }
-        if (!dup && n_seen < 20) {
-            seen[n_seen++] = msg_type;
-            ESP_LOGI(TAG, "RTCM type %u (first seen, %u types total)", msg_type, n_seen);
+
+        for (size_t i = 0; i < len; i++) {
+            uint8_t b = buf[i];
+            switch (rl_state) {
+            case RL_SYNC:
+                if (b == 0xD3) rl_state = RL_L1;
+                break;
+            case RL_L1:
+                if (b & 0xFCu) { rl_state = RL_SYNC; break; }
+                rl_plen  = (uint16_t)(b & 0x03u) << 8;
+                rl_state = RL_L2;
+                break;
+            case RL_L2:
+                rl_plen |= b;
+                rl_state  = (rl_plen >= 2) ? RL_P0 : RL_SYNC;
+                break;
+            case RL_P0:
+                rl_p0    = b;
+                rl_state = RL_P1;
+                break;
+            case RL_P1:
+                rl_p1 = b;
+                rl_mt = ((uint16_t)rl_p0 << 4) | (b >> 4);
+                {
+                    bool dup = false;
+                    for (uint8_t j = 0; j < n_seen; j++) if (seen[j] == rl_mt) { dup = true; break; }
+                    if (!dup && n_seen < 20) {
+                        seen[n_seen++] = rl_mt;
+                        ESP_LOGI(TAG, "RTCM type %u (first seen, %u types total)", rl_mt, n_seen);
+                    }
+                }
+                if (rl_plen >= 3) {
+                    rl_state = RL_P2;
+                } else {
+                    rl_remain = (uint16_t)(rl_plen - 2) + 3;
+                    rl_state  = rl_remain ? RL_SKIP : RL_SYNC;
+                }
+                break;
+            case RL_P2: {
+                /* Reference Station ID = bits 12-23 of payload
+                 * = lower nibble of payload[1] (rl_p1) + all of payload[2] (b) */
+                uint16_t sid = ((uint16_t)(rl_p1 & 0x0Fu) << 8) | b;
+                bool is_arp = (rl_mt == 1005 || rl_mt == 1006);
+                bool is_msm = (rl_mt >= 1071 && rl_mt <= 1127);
+                if (is_arp || is_msm) {
+                    static uint16_t s_arp_sid = 0xFFFFu;
+                    static uint16_t s_msm_sid = 0xFFFFu;
+                    if (is_arp && sid != s_arp_sid) {
+                        s_arp_sid = sid;
+                        ESP_LOGI(TAG, "RTCM ARP  station ID: %u (type %u)", sid, rl_mt);
+                    } else if (is_msm && sid != s_msm_sid) {
+                        s_msm_sid = sid;
+                        ESP_LOGI(TAG, "RTCM MSM  station ID: %u (from type %u)", sid, rl_mt);
+                    }
+                }
+                /* Remaining to skip: (plen-3) payload bytes + 3 CRC = plen */
+                rl_remain = rl_plen;
+                rl_state  = rl_remain ? RL_SKIP : RL_SYNC;
+                break;
+            }
+            case RL_SKIP:
+                if (--rl_remain == 0) rl_state = RL_SYNC;
+                break;
+            }
         }
     }
 
@@ -489,7 +604,11 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
     vTaskDelay(pdMS_TO_TICKS(200));
     pqtm_send("PAIR434,1");   /* 1005 ARP — required by rover for RTK */
     vTaskDelay(pdMS_TO_TICKS(200));
+#if CONFIG_GNSS_BASE_RTCM_EPHEMERIS
+    pqtm_send("PAIR436,1");   /* include ephemeris — may be required for RTK Fix on some builds */
+#else
     pqtm_send("PAIR436,0");   /* disable ephemeris — rover tracks its own */
+#endif
     vTaskDelay(pdMS_TO_TICKS(200));
 
     /* ── Survey-in configuration ────────────────────────────────────────────── */
