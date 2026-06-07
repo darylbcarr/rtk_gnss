@@ -55,12 +55,13 @@ static int           s_mode_sel = 0;    /* cursor in SCREEN_MODE_SELECT: 0=ROVER
 
 /* ── Shared helpers ──────────────────────────────────────────────────── */
 
-static const char *fix_label(uint8_t fix_type, uint8_t carr_soln)
+static const char *fix_label(uint8_t fix_type, uint8_t carr_soln, uint8_t quality)
 {
     if (fix_type == 0)  return "NO FIX  ";
     if (fix_type == 1)  return "DEAD REC";
     if (carr_soln == 2) return "RTK FIX ";
     if (carr_soln == 1) return "RTK FLT ";
+    if (quality  == 2)  return "DGPS    ";
     return "3D      ";
 }
 
@@ -75,7 +76,7 @@ static void render_rover_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
                               const ups_data_t *ups)
 {
     display_printf(0, 0, "%-8s SV:%-2u",
-                   fix_label(pvt->fix_type, pvt->carr_soln), pvt->num_sv);
+                   fix_label(pvt->fix_type, pvt->carr_soln, pvt->gga_quality), pvt->num_sv);
     display_printf(0, 1, "%.7f%c",
                    pvt->lat >= 0 ?  pvt->lat : -pvt->lat,
                    pvt->lat >= 0 ? 'N' : 'S');
@@ -153,7 +154,7 @@ static void render_fix_detail(const gnss_pvt_t *pvt)
     uint8_t cs = pvt->carr_soln <= 2 ? pvt->carr_soln : 0;
 
     display_puts  (0, 0, "  FIX DETAIL         ");
-    display_printf(0, 1, "Status:%-14s", fix_label(pvt->fix_type, pvt->carr_soln));
+    display_printf(0, 1, "Status:%-14s", fix_label(pvt->fix_type, pvt->carr_soln, pvt->gga_quality));
     display_printf(0, 2, "RTK:   %-14s",  rtk[cs]);
     display_printf(0, 3, "SV:    %-14u",  pvt->num_sv);
     display_printf(0, 4, "hAcc:  %.3f m", pvt->h_acc);

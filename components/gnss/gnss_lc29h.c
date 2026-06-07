@@ -107,6 +107,7 @@ static bool parse_gga(char *line, gnss_pvt_t *pvt)
     pvt->carr_soln   = (quality == 4) ? 2 : (quality == 5) ? 1 : 0;
     pvt->fix_type    = (quality == 6) ? 1 : 3;
     pvt->gnss_fix_ok = true;
+    pvt->gga_quality = (uint8_t)quality;
 
     /*
      * Differential corrections diagnostic: GGA fields 13 (age) and 14 (station).

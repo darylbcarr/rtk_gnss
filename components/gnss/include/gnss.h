@@ -21,6 +21,7 @@ typedef struct {
     uint32_t i_tow;      /* GPS time of week (ms) */
     float    pdop;
     bool     gnss_fix_ok;
+    uint8_t  gga_quality;  /* raw GGA field 6: 1=3D 2=DGPS 4=RTK Fix 5=RTK Float */
 } gnss_pvt_t;
 
 /* Survey-in progress snapshot. */
