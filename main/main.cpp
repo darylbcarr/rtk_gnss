@@ -20,6 +20,7 @@
 #include "ntrip_transport.h"
 #include "lora_transport.h"
 #include "base_app.h"
+#include "ups.h"
 #include <cstring>
 
 static const char *TAG = "app";
@@ -37,6 +38,7 @@ static const char *TAG = "app";
 
 #define OLED_ADDR    0x3C
 #define IMU_ADDR     0x29
+#define UPS_ADDR     0x41   /* INA219 on Waveshare UPS Module 3S */
 
 #define ENC_CLK_PIN  17
 #define ENC_DT_PIN   18
@@ -165,6 +167,10 @@ extern "C" void app_main(void)
     if (!imu_ok)
         ESP_LOGW(TAG, "IMU not found — heading unavailable");
 
+    bool ups_ok = (ups_init(i2c_bus, UPS_ADDR) == ESP_OK);
+    if (!ups_ok)
+        ESP_LOGW(TAG, "UPS not found — battery stats unavailable");
+
     encoder_init(ENC_CLK_PIN, ENC_DT_PIN, ENC_SW_PIN);
 
     /* ── Mode selection ──── */
@@ -252,6 +258,7 @@ extern "C" void app_main(void)
     /* ── Main loop ──── */
     gnss_pvt_t  pvt   = {};
     imu_data_t  imu_d = {};
+    ups_data_t  ups_d = {};
 
     for (;;) {
         /* In base mode the LC29H outputs RTCM only — no NMEA GGA is emitted.
@@ -271,6 +278,8 @@ extern "C" void app_main(void)
         if (imu_ok)
             imu_read(&imu_d);
 
+        ups_read(&ups_d);
+
         /* RTCM corrections are forwarded in rtcm_relay_task — no inline drain needed.
          * Update NTRIP caster position here so the server knows where the rover is. */
 #if CONFIG_ROVER_CORRECTION_NTRIP
@@ -289,7 +298,7 @@ extern "C" void app_main(void)
         }
 #endif
 
-        ui_tick(&pvt, &imu_d);
+        ui_tick(&pvt, &imu_d, &ups_d);
 
         /* In base mode overlay survey-in progress on OLED lines 2–3 */
         if (mode == DEVICE_MODE_BASE) {

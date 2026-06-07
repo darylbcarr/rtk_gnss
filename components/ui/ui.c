@@ -2,6 +2,7 @@
 #include "config.h"
 #include "display.h"
 #include "encoder.h"
+#include "ups.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -51,7 +52,8 @@ static const char *mode_str(device_mode_t m)
 
 /* ── Screen renderers ────────────────────────────────────────────────── */
 
-static void render_live(const gnss_pvt_t *pvt, const imu_data_t *imu)
+static void render_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
+                        const ups_data_t *ups)
 {
     display_printf(0, 0, "%-8s SV:%-2u",
                    fix_label(pvt->fix_type, pvt->carr_soln), pvt->num_sv);
@@ -68,8 +70,18 @@ static void render_live(const gnss_pvt_t *pvt, const imu_data_t *imu)
     else
         display_puts(0, 4, "HDG:---.-- Cal:--");
     display_printf(0, 5, "P:%+6.1f  R:%+6.1f", imu->pitch, imu->roll);
-    display_printf(0, 6, "PDOP:%.1f", pvt->pdop);
-    display_printf(0, 7, "%-5s [press: menu]  ", mode_str(s_mode));
+
+    /* Row 6: UPS battery — voltage, state-of-charge, current, charge state */
+    if (ups && ups->present)
+        display_printf(0, 6, "%4.1fV %3d%% %+5.1fA %s",
+                       ups->bus_voltage_V, ups->percent,
+                       ups->current_mA / 1000.0f,
+                       ups->charging ? "CHG" : "DSC");
+    else
+        display_puts(0, 6, "UPS:---             ");
+
+    /* Row 7: mode + PDOP + menu hint */
+    display_printf(0, 7, "%-5s PDOP:%-4.1f[menu]", mode_str(s_mode), pvt->pdop);
 }
 
 static void render_menu(void)
@@ -117,7 +129,7 @@ void ui_init(bool imu_available, device_mode_t mode)
     s_menu_sel = 0;
 }
 
-void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu)
+void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu, const ups_data_t *ups)
 {
     int  steps = encoder_get_steps();
     bool press = encoder_get_press();
@@ -167,7 +179,7 @@ void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu)
 
     display_clear();
     switch (s_screen) {
-    case SCREEN_LIVE:        render_live(pvt, imu);  break;
+    case SCREEN_LIVE:        render_live(pvt, imu, ups);  break;
     case SCREEN_MENU:        render_menu();           break;
     case SCREEN_FIX_DETAIL:  render_fix_detail(pvt); break;
     case SCREEN_MODE_SELECT: render_mode_select();    break;
