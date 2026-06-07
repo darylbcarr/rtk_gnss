@@ -261,9 +261,53 @@ extern "C" void app_main(void)
     ups_data_t  ups_d = {};
 
     for (;;) {
-        /* In base mode the LC29H outputs RTCM only — no NMEA GGA is emitted.
-         * Skip the blocking PVT wait so the main loop yields CPU quickly. */
+        /* In base mode the LC29H outputs RTCM only — no NMEA is emitted.
+         * Render the base station status screen and handle encoder input here,
+         * then skip the rover PVT path entirely. */
         if (mode == DEVICE_MODE_BASE) {
+            ups_read(&ups_d);
+
+            /* Encoder press → mode-select screen (allows switching to rover) */
+            if (encoder_get_press()) {
+                device_mode_t new_mode = ui_select_mode_blocking();
+                if (new_mode != DEVICE_MODE_BASE) {
+                    display_clear();
+                    display_puts(0, 3, "    Rebooting...     ");
+                    display_flush();
+                    vTaskDelay(pdMS_TO_TICKS(800));
+                    esp_restart();
+                }
+            }
+
+            display_clear();
+            base_state_t bst = base_app_get_state();
+            gnss_svin_t  sv  = base_app_get_svin();
+
+            if (bst == BASE_STATE_SURVEY_IN) {
+                display_puts  (0, 0, "BASE: SURVEY-IN      ");
+                display_printf(0, 1, "T:%4lus  Acc:%.2fm",
+                               (unsigned long)sv.dur_s, sv.mean_acc_m);
+                display_puts  (0, 2, sv.valid ? "Status: CONVERGED    "
+                                              : "Status: ACTIVE...    ");
+            } else {
+                display_puts(0, 0, "BASE: BROADCAST      ");
+                display_puts(0, 1, "RTCM streaming       ");
+                display_puts(0, 2, "                     ");
+            }
+
+            display_puts(0, 3, "                     ");  /* spacer */
+
+            if (ups_d.present)
+                display_printf(0, 4, "%4.1fV %3d%% %+5.1fA %s",
+                               ups_d.bus_voltage_V, ups_d.percent,
+                               ups_d.current_mA / 1000.0f,
+                               ups_d.charging ? "CHG" : "DSC");
+            else
+                display_puts(0, 4, "UPS:---              ");
+
+            display_puts(0, 7, "[press: mode select] ");
+            display_flush();
+
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
@@ -299,25 +343,6 @@ extern "C" void app_main(void)
 #endif
 
         ui_tick(&pvt, &imu_d, &ups_d);
-
-        /* In base mode overlay survey-in progress on OLED lines 2–3 */
-        if (mode == DEVICE_MODE_BASE) {
-            base_state_t bst = base_app_get_state();
-            if (bst == BASE_STATE_SURVEY_IN) {
-                gnss_svin_t sv = base_app_get_svin();
-                char ln2[22], ln3[22];
-                snprintf(ln2, sizeof(ln2), "T:%4lus Acc:%.2fm",
-                         (unsigned long)sv.dur_s, sv.mean_acc_m);
-                snprintf(ln3, sizeof(ln3), "Sv:%2u  %s",
-                         pvt.num_sv, sv.valid ? "VALID" : "ACTIVE");
-                display_puts(0, 2, ln2);
-                display_puts(0, 3, ln3);
-                display_flush();
-            } else if (bst == BASE_STATE_BROADCASTING) {
-                display_puts(0, 2, "RTCM BROADCAST  ");
-                display_flush();
-            }
-        }
 
         /* Log RTK state transitions */
         static uint8_t s_last_carr;
