@@ -34,6 +34,9 @@ static gnss_svin_t       s_svin;
 static SemaphoreHandle_t s_svin_mutex;
 static bool              s_svin_updated;
 
+/* RTCM ARP station ID seen by rover (0xFFFF = none yet) */
+static uint16_t s_rtcm_arp_sid = 0xFFFFu;
+
 /* ── NMEA helpers ────────────────────────────────────────────────────── */
 
 static bool nmea_valid(const char *line)
@@ -117,8 +120,10 @@ static bool parse_gga(char *line, gnss_pvt_t *pvt)
      * RTCM arrives).  Log when quality, station, or age-band changes so we
      * can see the exact moment fresh corrections kick in.
      */
+    pvt->diff_age_s = (nf >= 14 && f[13][0] != '\0') ? atof(f[13]) : 0.0f;
+
     if (nf >= 15) {
-        float diff_age     = atof(f[13]);
+        float diff_age     = pvt->diff_age_s;
         int   diff_station = atoi(f[14]);
         static float   s_last_age     = -999.0f;
         static int     s_last_station = -1;
@@ -545,10 +550,9 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
                 bool is_arp = (rl_mt == 1005 || rl_mt == 1006);
                 bool is_msm = (rl_mt >= 1071 && rl_mt <= 1127);
                 if (is_arp || is_msm) {
-                    static uint16_t s_arp_sid = 0xFFFFu;
                     static uint16_t s_msm_sid = 0xFFFFu;
-                    if (is_arp && sid != s_arp_sid) {
-                        s_arp_sid = sid;
+                    if (is_arp && sid != s_rtcm_arp_sid) {
+                        s_rtcm_arp_sid = sid;
                         ESP_LOGI(TAG, "RTCM ARP  station ID: %u (type %u)", sid, rl_mt);
                     } else if (is_msm && sid != s_msm_sid) {
                         s_msm_sid = sid;
@@ -576,6 +580,11 @@ void gnss_write_rtcm(const uint8_t *buf, size_t len)
         s_last_log = now;
     }
     xSemaphoreGive(s_tx_mutex);
+}
+
+bool gnss_rtcm_arp_seen(void)
+{
+    return s_rtcm_arp_sid != 0xFFFFu;
 }
 
 /*

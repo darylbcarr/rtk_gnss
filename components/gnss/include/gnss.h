@@ -22,6 +22,7 @@ typedef struct {
     float    pdop;
     bool     gnss_fix_ok;
     uint8_t  gga_quality;  /* raw GGA field 6: 1=3D 2=DGPS 4=RTK Fix 5=RTK Float */
+    float    diff_age_s;   /* age of differential corrections (s); 0 when none */
 } gnss_pvt_t;
 
 /* Survey-in progress snapshot. */
@@ -54,6 +55,10 @@ bool gnss_is_rtk_fix(const gnss_pvt_t *pvt);
 /* Forward RTCM3 correction bytes to the module receive port.
  * Thread-safe; may be called from any task. */
 void gnss_write_rtcm(const uint8_t *buf, size_t len);
+
+/* Returns true once a 1005/1006 ARP frame has been received by the rover.
+ * Stays true for the lifetime of the session. */
+bool gnss_rtcm_arp_seen(void);
 
 /*
  * Start base-station survey-in.

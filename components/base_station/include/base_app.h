@@ -30,6 +30,10 @@ base_state_t base_app_get_state(void);
 /* Returns the last received survey-in status snapshot. */
 gnss_svin_t base_app_get_svin(void);
 
+/* Cumulative RTCM broadcast counters (frames sent, 1005/1006 ARP frames sent, errors). */
+void base_app_get_rtcm_stats(uint32_t *frames_out, uint32_t *arp_count_out,
+                              uint32_t *errors_out);
+
 #ifdef __cplusplus
 }
 #endif

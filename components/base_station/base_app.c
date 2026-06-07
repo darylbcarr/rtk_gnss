@@ -16,6 +16,11 @@ static const char *TAG = "base";
 
 /* Task state */
 static volatile base_state_t s_state      = BASE_STATE_IDLE;
+
+/* RTCM broadcast counters — updated by broadcast_rtcm(), read by getter */
+static volatile uint32_t s_rtcm_frames     = 0;
+static volatile uint32_t s_rtcm_1005_count = 0;
+static volatile uint32_t s_rtcm_errors     = 0;
 static transport_t           *s_transport = NULL;
 static uint32_t               s_min_dur;
 static float                  s_acc_limit;
@@ -96,7 +101,7 @@ static void broadcast_rtcm(void)
             }
         }
 
-        if (len < 0) { errors++; continue; }
+        if (len < 0) { errors++; s_rtcm_errors++; continue; }
         if (len == 0) continue;
 
         /* Accumulate this frame plus any that arrived simultaneously (non-blocking drain) */
@@ -123,9 +128,12 @@ static void broadcast_rtcm(void)
                              mt, len, sid, n_tx_types);
                 }
                 /* 1005 = ARP without height, 1006 = ARP with height — both signal convergence */
-                if ((mt == 1005 || mt == 1006) && !saw_arb) {
-                    saw_arb = true;
-                    ESP_LOGI(TAG, "Survey-in converged — RTCM %u in stream", mt);
+                if (mt == 1005 || mt == 1006) {
+                    if (!saw_arb) {
+                        saw_arb = true;
+                        ESP_LOGI(TAG, "Survey-in converged — RTCM %u in stream", mt);
+                    }
+                    s_rtcm_1005_count++;
                 }
             }
 
@@ -148,8 +156,9 @@ static void broadcast_rtcm(void)
                 errors++;
                 ESP_LOGW(TAG, "LoRa send error for %d B batch", batch_len);
             } else {
-                frames += batch_frames;
-                bytes  += (uint32_t)batch_len;
+                frames         += batch_frames;
+                bytes          += (uint32_t)batch_len;
+                s_rtcm_frames  += batch_frames;
             }
         }
 
@@ -167,6 +176,14 @@ static void base_task(void *arg)
 }
 
 /* ── Public API ──────────────────────────────────────────────────────── */
+
+void base_app_get_rtcm_stats(uint32_t *frames_out, uint32_t *arp_count_out,
+                              uint32_t *errors_out)
+{
+    if (frames_out)    *frames_out    = s_rtcm_frames;
+    if (arp_count_out) *arp_count_out = s_rtcm_1005_count;
+    if (errors_out)    *errors_out    = s_rtcm_errors;
+}
 
 void base_app_start(transport_t *outbound, uint32_t min_dur_s, float acc_limit_m)
 {

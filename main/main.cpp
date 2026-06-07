@@ -21,6 +21,7 @@
 #include "lora_transport.h"
 #include "base_app.h"
 #include "ups.h"
+#include "sdcard.h"
 #include <cstring>
 
 static const char *TAG = "app";
@@ -39,6 +40,12 @@ static const char *TAG = "app";
 #define OLED_ADDR    0x3C
 #define IMU_ADDR     0x29
 #define UPS_ADDR     0x41   /* INA219 on Waveshare UPS Module 3S */
+
+#define SD_MOSI_PIN  10
+#define SD_MISO_PIN  11
+#define SD_CLK_PIN   12
+#define SD_CS_PIN    13
+#define SD_SPI_HOST  SPI2_HOST
 
 #define ENC_CLK_PIN  17
 #define ENC_DT_PIN   18
@@ -181,6 +188,15 @@ extern "C" void app_main(void)
 
     ui_init(imu_ok, mode);
 
+    static const sdlog_cfg_t sd_cfg = {
+        .pin_mosi = SD_MOSI_PIN,
+        .pin_miso = SD_MISO_PIN,
+        .pin_clk  = SD_CLK_PIN,
+        .pin_cs   = SD_CS_PIN,
+        .spi_host = SD_SPI_HOST,
+    };
+    sdlog_init(&sd_cfg, mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
+
     /* ── LoRa transport (both modes) ──── */
     static lora_transport_t lora_tp;
     static const lora_transport_cfg_t lora_cfg = {
@@ -299,11 +315,38 @@ extern "C" void app_main(void)
 
         /* Base mode: pace at 1 Hz (rover is paced by the GNSS epoch above). */
         if (mode == DEVICE_MODE_BASE) {
+            uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+            uint32_t rtcm_frames, rtcm_1005, rtcm_errors;
+            base_app_get_rtcm_stats(&rtcm_frames, &rtcm_1005, &rtcm_errors);
+            gnss_svin_t sv  = base_app_get_svin();
+            base_state_t bst = base_app_get_state();
+            const char *state_str = (bst == BASE_STATE_SURVEY_IN)    ? "SVIN"
+                                  : (bst == BASE_STATE_BROADCASTING)  ? "BCAST"
+                                                                       : "IDLE";
+            sdlog_writef("%lu,%s,%lu,%.2f,%d,%lu,%lu,%lu,%.2f,%d,%.0f\n",
+                         (unsigned long)now_s, state_str,
+                         (unsigned long)sv.dur_s, sv.mean_acc_m, sv.valid,
+                         (unsigned long)rtcm_frames,
+                         (unsigned long)rtcm_1005,
+                         (unsigned long)rtcm_errors,
+                         ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
         /* Rover-only diagnostics ── */
+
+        /* SD log — one line per GNSS epoch */
+        {
+            uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+            sdlog_writef("%lu,%d,%d,%d,%.3f,%.1f,%d,%.1f,%.2f,%d,%.0f\n",
+                         (unsigned long)now_s,
+                         pvt.gga_quality, pvt.carr_soln, pvt.num_sv,
+                         pvt.h_acc, pvt.diff_age_s,
+                         gnss_rtcm_arp_seen() ? 1 : 0,
+                         pvt.pdop,
+                         ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
+        }
 
         /* Log RTK state transitions */
         static uint8_t s_last_carr;
