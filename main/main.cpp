@@ -261,68 +261,21 @@ extern "C" void app_main(void)
     ups_data_t  ups_d = {};
 
     for (;;) {
-        /* In base mode the LC29H outputs RTCM only — no NMEA is emitted.
-         * Render the base station status screen and handle encoder input here,
-         * then skip the rover PVT path entirely. */
-        if (mode == DEVICE_MODE_BASE) {
-            ups_read(&ups_d);
-
-            /* Encoder press → mode-select screen (allows switching to rover) */
-            if (encoder_get_press()) {
-                device_mode_t new_mode = ui_select_mode_blocking();
-                if (new_mode != DEVICE_MODE_BASE) {
-                    display_clear();
-                    display_puts(0, 3, "    Rebooting...     ");
-                    display_flush();
-                    vTaskDelay(pdMS_TO_TICKS(800));
-                    esp_restart();
-                }
-            }
-
-            display_clear();
-            base_state_t bst = base_app_get_state();
-            gnss_svin_t  sv  = base_app_get_svin();
-
-            if (bst == BASE_STATE_SURVEY_IN) {
-                display_puts  (0, 0, "BASE: SURVEY-IN      ");
-                display_printf(0, 1, "T:%4lus  Acc:%.2fm",
-                               (unsigned long)sv.dur_s, sv.mean_acc_m);
-                display_puts  (0, 2, sv.valid ? "Status: CONVERGED    "
-                                              : "Status: ACTIVE...    ");
-            } else {
-                display_puts(0, 0, "BASE: BROADCAST      ");
-                display_puts(0, 1, "RTCM streaming       ");
-                display_puts(0, 2, "                     ");
-            }
-
-            display_puts(0, 3, "                     ");  /* spacer */
-
-            if (ups_d.present)
-                display_printf(0, 4, "%4.1fV %3d%% %+5.1fA %s",
-                               ups_d.bus_voltage_V, ups_d.percent,
-                               ups_d.current_mA / 1000.0f,
-                               ups_d.charging ? "CHG" : "DSC");
-            else
-                display_puts(0, 4, "UPS:---              ");
-
-            display_puts(0, 7, "[press: mode select] ");
-            display_flush();
-
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        if (!gnss_read_pvt(&pvt, 2000)) {
-            ESP_LOGW(TAG, "No GNSS data in 2 s — check antenna/wiring");
-            display_puts(0, 0, "GNSS TIMEOUT    ");
-            display_flush();
-            continue;
-        }
-
+        /* Sensors common to both modes */
+        ups_read(&ups_d);
         if (imu_ok)
             imu_read(&imu_d);
 
-        ups_read(&ups_d);
+        /* Rover: block until the next GNSS epoch (LC29H outputs NMEA in rover mode).
+         * Base: skip — LC29H outputs RTCM only, no NMEA is emitted. */
+        if (mode == DEVICE_MODE_ROVER) {
+            if (!gnss_read_pvt(&pvt, 2000)) {
+                ESP_LOGW(TAG, "No GNSS data in 2 s — check antenna/wiring");
+                display_puts(0, 0, "GNSS TIMEOUT    ");
+                display_flush();
+                continue;
+            }
+        }
 
         /* RTCM corrections are forwarded in rtcm_relay_task — no inline drain needed.
          * Update NTRIP caster position here so the server knows where the rover is. */
@@ -344,6 +297,14 @@ extern "C" void app_main(void)
 
         ui_tick(&pvt, &imu_d, &ups_d);
 
+        /* Base mode: pace at 1 Hz (rover is paced by the GNSS epoch above). */
+        if (mode == DEVICE_MODE_BASE) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        /* Rover-only diagnostics ── */
+
         /* Log RTK state transitions */
         static uint8_t s_last_carr;
         if (pvt.carr_soln != s_last_carr) {
@@ -354,8 +315,7 @@ extern "C" void app_main(void)
             s_last_carr = pvt.carr_soln;
         }
 
-        /* Periodic position log — shows satellite count and fix quality without
-         * waiting for an RTK state change (useful during survey-in phase). */
+        /* Periodic position log */
         static uint32_t s_pos_log_s;
         uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
         if (now_s - s_pos_log_s >= 30) {

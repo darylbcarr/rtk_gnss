@@ -3,6 +3,7 @@
 #include "display.h"
 #include "encoder.h"
 #include "ups.h"
+#include "base_app.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,12 +22,30 @@ typedef struct {
     screen_t    target;
 } menu_item_t;
 
-static const menu_item_t s_menu[] = {
+/* Forward declaration — defined with other statics below. */
+static device_mode_t s_mode;
+
+/* Rover has a "Fix detail" entry; Base omits it (no PVT in base mode). */
+static const menu_item_t s_rover_menu[] = {
     { "Fix detail",  SCREEN_FIX_DETAIL  },
     { "Device mode", SCREEN_MODE_SELECT },
     { "Exit",        SCREEN_LIVE        },
 };
-#define MENU_COUNT ((int)(sizeof(s_menu) / sizeof(s_menu[0])))
+static const menu_item_t s_base_menu[] = {
+    { "Device mode", SCREEN_MODE_SELECT },
+    { "Exit",        SCREEN_LIVE        },
+};
+
+static const menu_item_t *cur_menu(void)
+{
+    return s_mode == DEVICE_MODE_BASE ? s_base_menu : s_rover_menu;
+}
+static int cur_menu_cnt(void)
+{
+    return s_mode == DEVICE_MODE_BASE
+           ? (int)(sizeof(s_base_menu)  / sizeof(s_base_menu[0]))
+           : (int)(sizeof(s_rover_menu) / sizeof(s_rover_menu[0]));
+}
 
 static screen_t      s_screen   = SCREEN_LIVE;
 static int           s_menu_sel = 0;
@@ -52,8 +71,8 @@ static const char *mode_str(device_mode_t m)
 
 /* ── Screen renderers ────────────────────────────────────────────────── */
 
-static void render_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
-                        const ups_data_t *ups)
+static void render_rover_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
+                              const ups_data_t *ups)
 {
     display_printf(0, 0, "%-8s SV:%-2u",
                    fix_label(pvt->fix_type, pvt->carr_soln), pvt->num_sv);
@@ -69,9 +88,8 @@ static void render_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
                        imu->heading, imu->sys_cal);
     else
         display_puts(0, 4, "HDG:---.-- Cal:--");
-    display_printf(0, 5, "P:%+6.1f  R:%+6.1f", imu->pitch, imu->roll);
+    display_printf(0, 5, "PDOP:%-4.1f  P:%+5.1f", pvt->pdop, imu->pitch);
 
-    /* Row 6: UPS battery — voltage, state-of-charge, current, charge state */
     if (ups && ups->present)
         display_printf(0, 6, "%4.1fV %3d%% %+5.1fA %s",
                        ups->bus_voltage_V, ups->percent,
@@ -80,16 +98,53 @@ static void render_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
     else
         display_puts(0, 6, "UPS:---             ");
 
-    /* Row 7: mode + PDOP + menu hint */
-    display_printf(0, 7, "%-5s PDOP:%-4.1f[menu]", mode_str(s_mode), pvt->pdop);
+    display_printf(0, 7, "%-5s          [menu]", mode_str(s_mode));
+}
+
+static void render_base_live(const ups_data_t *ups)
+{
+    base_state_t bst = base_app_get_state();
+    gnss_svin_t  sv  = base_app_get_svin();
+
+    if (bst == BASE_STATE_SURVEY_IN) {
+        display_puts  (0, 0, "BASE: SURVEY-IN      ");
+        display_printf(0, 1, "T:%4lus  Acc:%.2fm   ",
+                       (unsigned long)sv.dur_s, sv.mean_acc_m);
+        display_puts  (0, 2, sv.valid ? "Status: CONVERGED    "
+                                      : "Status: ACTIVE...    ");
+    } else if (bst == BASE_STATE_BROADCASTING) {
+        display_puts(0, 0, "BASE: BROADCAST      ");
+        display_puts(0, 1, "RTCM streaming       ");
+        display_puts(0, 2, "                     ");
+    } else {
+        display_puts(0, 0, "BASE: INITIALIZING   ");
+        display_puts(0, 1, "                     ");
+        display_puts(0, 2, "                     ");
+    }
+
+    display_puts(0, 3, "                     ");
+
+    if (ups && ups->present)
+        display_printf(0, 4, "%4.1fV %3d%% %+5.1fA %s",
+                       ups->bus_voltage_V, ups->percent,
+                       ups->current_mA / 1000.0f,
+                       ups->charging ? "CHG" : "DSC");
+    else
+        display_puts(0, 4, "UPS:---              ");
+
+    display_puts(0, 5, "                     ");
+    display_puts(0, 6, "                     ");
+    display_printf(0, 7, "%-5s          [menu]", mode_str(s_mode));
 }
 
 static void render_menu(void)
 {
+    const menu_item_t *menu = cur_menu();
+    int                cnt  = cur_menu_cnt();
     display_puts(0, 0, "      MENU           ");
-    for (int i = 0; i < MENU_COUNT; i++)
+    for (int i = 0; i < cnt; i++)
         display_printf(0, 1 + i, "%c %-19s",
-                       i == s_menu_sel ? '>' : ' ', s_menu[i].label);
+                       i == s_menu_sel ? '>' : ' ', menu[i].label);
 }
 
 static void render_fix_detail(const gnss_pvt_t *pvt)
@@ -139,18 +194,20 @@ void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu, const ups_data_t *ups
         if (press) { s_screen = SCREEN_MENU; s_menu_sel = 0; }
         break;
 
-    case SCREEN_MENU:
+    case SCREEN_MENU: {
+        int cnt = cur_menu_cnt();
         if (steps > 0)
-            s_menu_sel = (s_menu_sel + 1) % MENU_COUNT;
+            s_menu_sel = (s_menu_sel + 1) % cnt;
         else if (steps < 0)
-            s_menu_sel = (s_menu_sel - 1 + MENU_COUNT) % MENU_COUNT;
+            s_menu_sel = (s_menu_sel - 1 + cnt) % cnt;
         if (press) {
-            screen_t target = s_menu[s_menu_sel].target;
+            screen_t target = cur_menu()[s_menu_sel].target;
             if (target == SCREEN_MODE_SELECT)
                 s_mode_sel = (s_mode == DEVICE_MODE_BASE) ? 1 : 0;
             s_screen = target;
         }
         break;
+    }
 
     case SCREEN_FIX_DETAIL:
         if (press) s_screen = SCREEN_MENU;
@@ -179,7 +236,12 @@ void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu, const ups_data_t *ups
 
     display_clear();
     switch (s_screen) {
-    case SCREEN_LIVE:        render_live(pvt, imu, ups);  break;
+    case SCREEN_LIVE:
+        if (s_mode == DEVICE_MODE_BASE)
+            render_base_live(ups);
+        else
+            render_rover_live(pvt, imu, ups);
+        break;
     case SCREEN_MENU:        render_menu();           break;
     case SCREEN_FIX_DETAIL:  render_fix_detail(pvt); break;
     case SCREEN_MODE_SELECT: render_mode_select();    break;
