@@ -10,13 +10,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 static const char *TAG = "sdlog";
 
 #define MOUNT_POINT     "/sdcard"
-#define LINE_MAX        160
-#define MSG_BUF_BYTES   (LINE_MAX * 48)   /* ~7.5 KB — holds ~48 queued lines */
+#define LOG_LINE_MAX        160
+#define MSG_BUF_BYTES   (LOG_LINE_MAX * 48)   /* ~7.5 KB — holds ~48 queued lines */
 #define FLUSH_INTERVAL  10                 /* flush after every N lines written */
 
 static FILE                  *s_file          = NULL;
@@ -28,7 +29,7 @@ static volatile bool          s_flush_req     = false;
 
 static void sdlog_task(void *arg)
 {
-    char    line[LINE_MAX];
+    char    line[LOG_LINE_MAX];
     int     unflushed = 0;
 
     for (;;) {
@@ -118,7 +119,7 @@ esp_err_t sdlog_init(const sdlog_cfg_t *cfg, const char *mode_name)
 
     s_file = fopen(path, "w");
     if (!s_file) {
-        ESP_LOGE(TAG, "Cannot open %s", path);
+        ESP_LOGE(TAG, "Cannot open %s: %s", path, strerror(errno));
         return ESP_FAIL;
     }
 
@@ -154,7 +155,7 @@ esp_err_t sdlog_init(const sdlog_cfg_t *cfg, const char *mode_name)
 void sdlog_writef(const char *fmt, ...)
 {
     if (!s_ready || !s_msg_buf) return;
-    char line[LINE_MAX];
+    char line[LOG_LINE_MAX];
     va_list ap;
     va_start(ap, fmt);
     int n = vsnprintf(line, sizeof(line), fmt, ap);
