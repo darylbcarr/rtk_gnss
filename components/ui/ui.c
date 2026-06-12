@@ -3,6 +3,7 @@
 #include "display.h"
 #include "encoder.h"
 #include "ups.h"
+#include "gnss.h"
 #include "base_app.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -49,7 +50,6 @@ static int cur_menu_cnt(void)
 
 static screen_t      s_screen   = SCREEN_LIVE;
 static int           s_menu_sel = 0;
-static bool          s_imu_ok   = false;
 static device_mode_t s_mode     = DEVICE_MODE_ROVER;
 static int           s_mode_sel = 0;    /* cursor in SCREEN_MODE_SELECT: 0=ROVER 1=BASE */
 
@@ -72,25 +72,41 @@ static const char *mode_str(device_mode_t m)
 
 /* ── Screen renderers ────────────────────────────────────────────────── */
 
-static void render_rover_live(const gnss_pvt_t *pvt, const imu_data_t *imu,
-                              const ups_data_t *ups)
+static void render_rover_live(const gnss_pvt_t *pvt, const ups_data_t *ups,
+                              uint32_t lora_rx_b)
 {
+    /* Line 0: fix quality + satellite count */
     display_printf(0, 0, "%-8s SV:%-2u",
-                   fix_label(pvt->fix_type, pvt->carr_soln, pvt->gga_quality), pvt->num_sv);
+                   fix_label(pvt->fix_type, pvt->carr_soln, pvt->gga_quality),
+                   pvt->num_sv);
+
+    /* Lines 1-2: position */
     display_printf(0, 1, "%.7f%c",
                    pvt->lat >= 0 ?  pvt->lat : -pvt->lat,
                    pvt->lat >= 0 ? 'N' : 'S');
     display_printf(0, 2, "%.7f%c",
                    pvt->lon >= 0 ?  pvt->lon : -pvt->lon,
                    pvt->lon >= 0 ? 'E' : 'W');
-    display_printf(0, 3, "Alt:%7.2fm hA:%.3f", pvt->alt_msl, pvt->h_acc);
-    if (s_imu_ok && imu->calibrated)
-        display_printf(0, 4, "HDG:%5.1f  Cal:%u/3",
-                       imu->heading, imu->sys_cal);
-    else
-        display_puts(0, 4, "HDG:---.-- Cal:--");
-    display_printf(0, 5, "PDOP:%-4.1f  P:%+5.1f", pvt->pdop, imu->pitch);
 
+    /* Line 3: altitude + horizontal accuracy */
+    display_printf(0, 3, "Alt:%7.2fm hA:%.3f", pvt->alt_msl, pvt->h_acc);
+
+    /* Line 4: RTK correction flow — ARP received, correction age, RX bytes */
+    {
+        bool     arp = gnss_rtcm_arp_seen();
+        uint32_t kb  = lora_rx_b / 1024;
+        if (pvt->diff_age_s > 0.0f)
+            display_printf(0, 4, "ARP:%c Age:%4.1fs %3lukB",
+                           arp ? 'Y' : 'N', pvt->diff_age_s, (unsigned long)kb);
+        else
+            display_printf(0, 4, "ARP:%c Age:  --s %3lukB",
+                           arp ? 'Y' : 'N', (unsigned long)kb);
+    }
+
+    /* Line 5: dilution of precision + vertical accuracy */
+    display_printf(0, 5, "PDOP:%-4.1f vAcc:%.3fm", pvt->pdop, pvt->v_acc);
+
+    /* Line 6: power */
     if (ups && ups->present)
         display_printf(0, 6, "%4.1fV %3d%% %+5.1fA %s",
                        ups->bus_voltage_V, ups->percent,
@@ -106,35 +122,47 @@ static void render_base_live(const ups_data_t *ups)
 {
     base_state_t bst = base_app_get_state();
     gnss_svin_t  sv  = base_app_get_svin();
+    uint32_t frames, arpcnt, errors;
+    base_app_get_rtcm_stats(&frames, &arpcnt, &errors);
 
-    if (bst == BASE_STATE_SURVEY_IN) {
-        display_puts  (0, 0, "BASE: SURVEY-IN      ");
-        display_printf(0, 1, "T:%4lus  Acc:%.2fm   ",
-                       (unsigned long)sv.dur_s, sv.mean_acc_m);
-        display_puts  (0, 2, sv.valid ? "Status: CONVERGED    "
-                                      : "Status: ACTIVE...    ");
-    } else if (bst == BASE_STATE_BROADCASTING) {
-        display_puts(0, 0, "BASE: BROADCAST      ");
-        display_puts(0, 1, "RTCM streaming       ");
+    /* Line 0: state banner */
+    if (bst == BASE_STATE_SURVEY_IN)
+        display_puts(0, 0, "BASE: SURVEY-IN      ");
+    else if (bst == BASE_STATE_BROADCASTING)
+        display_puts(0, 0, "BASE: BROADCASTING   ");
+    else
+        display_puts(0, 0, "BASE: INIT           ");
+
+    /* Lines 1-2: survey-in snapshot.
+     * Live progress during SVIN; frozen convergence values during BCAST. */
+    display_printf(0, 1, "T:%4lus  Acc:%6.2fm  ",
+                   (unsigned long)sv.dur_s, sv.mean_acc_m);
+    if (bst == BASE_STATE_SURVEY_IN)
+        display_puts(0, 2, sv.valid ? "CONVERGED            "
+                                    : "ACTIVE...            ");
+    else if (bst == BASE_STATE_BROADCASTING)
+        display_printf(0, 2, "ARP:%-17s",
+                       arpcnt > 0 ? "YES" : "waiting...");
+    else
         display_puts(0, 2, "                     ");
-    } else {
-        display_puts(0, 0, "BASE: INITIALIZING   ");
-        display_puts(0, 1, "                     ");
-        display_puts(0, 2, "                     ");
-    }
 
-    display_puts(0, 3, "                     ");
+    /* Lines 3-4: RTCM stream health */
+    display_printf(0, 3, "RTCM:%6lu  Err:%4lu",
+                   (unsigned long)frames, (unsigned long)errors);
+    display_printf(0, 4, "1005:%6lu ARP:%-3s",
+                   (unsigned long)arpcnt, arpcnt > 0 ? "YES" : "NO");
 
+    display_puts(0, 5, "                     ");
+
+    /* Line 6: power */
     if (ups && ups->present)
-        display_printf(0, 4, "%4.1fV %3d%% %+5.1fA %s",
+        display_printf(0, 6, "%4.1fV %3d%% %+5.1fA %s",
                        ups->bus_voltage_V, ups->percent,
                        ups->current_mA / 1000.0f,
                        ups->charging ? "CHG" : "DSC");
     else
-        display_puts(0, 4, "UPS:---              ");
+        display_puts(0, 6, "UPS:---              ");
 
-    display_puts(0, 5, "                     ");
-    display_puts(0, 6, "                     ");
     display_printf(0, 7, "%-5s          [menu]", mode_str(s_mode));
 }
 
@@ -177,15 +205,14 @@ static void render_mode_select(void)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-void ui_init(bool imu_available, device_mode_t mode)
+void ui_init(device_mode_t mode)
 {
-    s_imu_ok   = imu_available;
     s_mode     = mode;
     s_screen   = SCREEN_LIVE;
     s_menu_sel = 0;
 }
 
-void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu, const ups_data_t *ups)
+void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b)
 {
     int  steps = encoder_get_steps();
     bool press = encoder_get_press();
@@ -241,7 +268,7 @@ void ui_tick(const gnss_pvt_t *pvt, const imu_data_t *imu, const ups_data_t *ups
         if (s_mode == DEVICE_MODE_BASE)
             render_base_live(ups);
         else
-            render_rover_live(pvt, imu, ups);
+            render_rover_live(pvt, ups, lora_rx_b);
         break;
     case SCREEN_MENU:        render_menu();           break;
     case SCREEN_FIX_DETAIL:  render_fix_detail(pvt); break;

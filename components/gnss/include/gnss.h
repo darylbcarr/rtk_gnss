@@ -40,8 +40,15 @@ typedef struct {
  * not connected.  When connected, gnss_start_survey_in() uses a hardware
  * pulse to restart the module after saving config, instead of relying on
  * the software PQTMSRR command (which fails on some LC29H firmware builds).
+ *
+ * want_rover: true when the app is running in Rover mode.  If the LC29H has
+ * saved base-station config in NVM (detected by RTCM output at boot), this
+ * flag causes gnss_init() to switch the module back to rover mode, save the
+ * new config, and reset the module — so the rover gets NMEA position fixes
+ * rather than RTCM output.
  */
-esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin);
+esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin,
+                    bool want_rover);
 
 /*
  * Block until a fresh position fix is available or timeout_ms elapses.

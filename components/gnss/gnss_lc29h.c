@@ -152,19 +152,30 @@ static void parse_gsa(char *line, gnss_pvt_t *pvt)
 }
 
 /*
- * $PQTMSVINSTATUS,<active>,<valid>,<obs>,<meanX>,<meanY>,<meanZ>,<meanAcc>
- * meanAcc: mean 3D accuracy in cm (0.01 m units).
+ * Parse either format of SVINSTATUS into s_svin.
+ *
+ * Autonomous output: $PQTMSVINSTATUS,active,valid,obs,meanX,meanY,meanZ,meanAcc*cs
+ *   base=1  (data starts at f[1])
+ *
+ * Query response:   $PQTM,PQTMSVINSTATUS,0,active,valid,obs,meanX,meanY,meanZ,meanAcc*cs
+ *   base=3  (skip sentence name, command name, result code)
+ *
+ * meanAcc is in cm; multiply by 0.01 to get metres.
  */
-static void parse_svinstatus(char *line)
+static void parse_svinstatus(char *line, int base)
 {
-    char *f[10];
-    if (nmea_split(line, f, 10) < 8) return;
+    char *f[12];
+    if (nmea_split(line, f, 12) < base + 7) return;
 
     gnss_svin_t sv;
-    sv.active     = atoi(f[1]) != 0;
-    sv.valid      = atoi(f[2]) != 0;
-    sv.dur_s      = (uint32_t)atol(f[3]);
-    sv.mean_acc_m = atof(f[7]) * 0.01f;   /* cm → m */
+    sv.active     = atoi(f[base])     != 0;
+    sv.valid      = atoi(f[base + 1]) != 0;
+    sv.dur_s      = (uint32_t)atol(f[base + 2]);   /* obs count ≈ elapsed s at 1 Hz */
+    sv.mean_acc_m = atof(f[base + 6]) * 0.01f;     /* cm → m */
+
+    ESP_LOGI(TAG, "svin: active=%d valid=%d obs=%lu acc=%.2fm",
+             (int)sv.active, (int)sv.valid,
+             (unsigned long)sv.dur_s, sv.mean_acc_m);
 
     xSemaphoreTake(s_svin_mutex, portMAX_DELAY);
     s_svin         = sv;
@@ -323,7 +334,11 @@ static void gnss_reader_task(void *arg)
             } else if (strncmp(type, "GSA", 3) == 0) {
                 parse_gsa(nmea_buf, &pvt);
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
-                parse_svinstatus(nmea_buf);
+                /* Autonomous output: $PQTMSVINSTATUS,active,valid,obs,...,meanAcc */
+                parse_svinstatus(nmea_buf, 1);
+            } else if (strncmp(nmea_buf + 1, "PQTM,PQTMSVINSTATUS,", 20) == 0) {
+                /* Query response: $PQTM,PQTMSVINSTATUS,<result>,active,valid,obs,...,meanAcc */
+                parse_svinstatus(nmea_buf, 3);
             } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0 ||
                        strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
                 /* All PQTM and PAIR responses at INFO so query replies are visible */
@@ -337,7 +352,8 @@ static void gnss_reader_task(void *arg)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
+esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin,
+                    bool want_rover)
 {
     s_uart       = port;
     s_nreset_pin = nreset_pin;
@@ -436,6 +452,27 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
     /* Start background reader task */
     xTaskCreate(gnss_reader_task, "gnss_reader", 4096, NULL, 18, NULL);
     vTaskDelay(pdMS_TO_TICKS(50));  /* let task start so PQTM response lands in parser */
+
+    if (s_booted_in_base && want_rover) {
+        /* Module has saved base-station config but app wants rover mode.
+         * Switch it back to rover, save, and reset so it boots outputting NMEA. */
+        ESP_LOGW(TAG, "LC29H booted in base mode but rover mode requested — switching");
+        pqtm_send("PQTMCFGRCVRMODE,W,1");
+        vTaskDelay(pdMS_TO_TICKS(300));
+        pqtm_send("PQTMSAVEPAR");
+        vTaskDelay(pdMS_TO_TICKS(500));
+        if (s_nreset_pin >= 0) {
+            gpio_set_level((gpio_num_t)s_nreset_pin, 0);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            gpio_set_level((gpio_num_t)s_nreset_pin, 1);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+        } else {
+            pqtm_send("PQTMSRR");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        }
+        s_booted_in_base = false;
+        /* fall through to rover config below */
+    }
 
     if (s_booted_in_base) {
         /* Module loaded its saved base-station config and is already outputting

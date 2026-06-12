@@ -134,8 +134,9 @@ esp_err_t sdlog_init(const sdlog_cfg_t *cfg, const char *mode_name)
                 "ups_v,ups_pct,ups_ma\n");
     } else {
         fprintf(s_file,
-                "time_s,quality,carr_soln,sv_count,"
-                "h_acc_m,diff_age_s,arp_seen,pdop,lora_rx_B\n");
+                "time_s,fix_type,carr_soln,sv_count,"
+                "h_acc_m,v_acc_m,pdop,diff_age_s,arp_seen,"
+                "lat,lon,alt_m,lora_rx_B\n");
     }
     fflush(s_file);
     fsync(fileno(s_file));

@@ -186,7 +186,7 @@ extern "C" void app_main(void)
         mode = ui_select_mode_blocking();
     ESP_LOGI(TAG, "Device mode: %s", mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
 
-    ui_init(imu_ok, mode);
+    ui_init(mode);
 
     static const sdlog_cfg_t sd_cfg = {
         .pin_mosi = SD_MOSI_PIN,
@@ -215,7 +215,8 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, "LoRa transport init failed — continuing without LoRa");
 
     /* ── GNSS ──── */
-    if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN, GNSS_NRESET_PIN) != ESP_OK) {
+    if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN, GNSS_NRESET_PIN,
+                  mode == DEVICE_MODE_ROVER) != ESP_OK) {
         ESP_LOGE(TAG, "GNSS init failed — halting");
         return;
     }
@@ -311,7 +312,7 @@ extern "C" void app_main(void)
         }
 #endif
 
-        ui_tick(&pvt, &imu_d, &ups_d);
+        ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes);
 
         /* Base mode: pace at 1 Hz (rover is paced by the GNSS epoch above). */
         if (mode == DEVICE_MODE_BASE) {
@@ -330,7 +331,7 @@ extern "C" void app_main(void)
                          (unsigned long)rtcm_1005,
                          (unsigned long)rtcm_errors,
                          ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            vTaskDelay(pdMS_TO_TICKS(10000));
             continue;
         }
 
@@ -342,12 +343,12 @@ extern "C" void app_main(void)
             static uint32_t s_log_s    = 0;
             uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
             if (pvt.carr_soln != s_log_carr || now_s - s_log_s >= 10) {
-                sdlog_writef("%lu,%d,%d,%d,%.3f,%.1f,%d,%.1f,%lu\n",
+                sdlog_writef("%lu,%d,%d,%d,%.3f,%.3f,%.1f,%.1f,%d,%.7f,%.7f,%.2f,%lu\n",
                              (unsigned long)now_s,
-                             pvt.gga_quality, pvt.carr_soln, pvt.num_sv,
-                             pvt.h_acc, pvt.diff_age_s,
+                             pvt.fix_type, pvt.carr_soln, pvt.num_sv,
+                             pvt.h_acc, pvt.v_acc, pvt.pdop, pvt.diff_age_s,
                              gnss_rtcm_arp_seen() ? 1 : 0,
-                             pvt.pdop,
+                             pvt.lat, pvt.lon, pvt.alt_msl,
                              (unsigned long)lora_tp.rx_bytes);
                 s_log_carr = pvt.carr_soln;
                 s_log_s    = now_s;

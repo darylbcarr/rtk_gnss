@@ -106,7 +106,7 @@ static esp_err_t e22_configure(void)
             ESP_LOGD(TAG, "AUX dipped LOW: M1 & AUX wiring confirmed");
     }
 
-    esp_err_t ret = wait_aux_high(3000);
+    esp_err_t ret = wait_aux_high(5000);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "E22 did not go idle for config");
         return ret;
@@ -192,7 +192,7 @@ static esp_err_t e22_configure(void)
     }
 
     set_mode(0, 0);   /* NORMAL mode: M0=0, M1=0 */
-    ret = wait_aux_high(500);
+    ret = wait_aux_high(2000);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "E22 did not return to normal mode");
         return ret;
@@ -279,15 +279,29 @@ esp_err_t lora_init(uart_port_t uart, int tx_pin, int rx_pin,
     ESP_ERROR_CHECK(uart_param_config(uart, &ucfg));
     ESP_ERROR_CHECK(uart_set_pin(uart, tx_pin, rx_pin,
                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(uart, RX_BUF_SIZE * 2, 0, 0, NULL, 0));
+    if (!uart_is_driver_installed(uart))
+        ESP_ERROR_CHECK(uart_driver_install(uart, RX_BUF_SIZE * 2, 0, 0, NULL, 0));
 
-    esp_err_t ret = wait_aux_high(2000);
+    /* Let the E22 complete its power-on boot sequence before sampling AUX. */
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    esp_err_t ret = wait_aux_high(5000);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "E22 not responding — check wiring and power");
         return ret;
     }
 
     ret = e22_configure();
+    if (ret != ESP_OK) {
+        /* Reset to NORMAL mode and retry once; cold-start timing can push the
+         * first attempt past its AUX timeout on a slow E22 power-cycle. */
+        ESP_LOGW(TAG, "LoRa configure failed, resetting to NORMAL and retrying in 2 s");
+        gpio_set_level(s_m0_pin, 0);
+        gpio_set_level(s_m1_pin, 0);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        if (wait_aux_high(5000) == ESP_OK)
+            ret = e22_configure();
+    }
     if (ret != ESP_OK)
         return ret;
 

@@ -214,9 +214,11 @@ static void valset_u1(uint32_t key, uint8_t val)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin)
+esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin,
+                    bool want_rover)
 {
-    (void)nreset_pin;   /* ZED-F9P reset handled externally */
+    (void)nreset_pin;
+    (void)want_rover;   /* ZED-F9P always in rover mode; base handled externally */
     s_uart = port;
     memset(&s_parser, 0, sizeof(s_parser));
     if (!s_tx_mutex) s_tx_mutex = xSemaphoreCreateMutex();
