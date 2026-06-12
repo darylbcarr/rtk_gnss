@@ -52,8 +52,8 @@ static const char *TAG = "app";
 #define ENC_SW_PIN   38
 
 #define LORA_UART    UART_NUM_2
-#define LORA_TX_PIN  4
-#define LORA_RX_PIN  7
+#define LORA_TX_PIN  4   /* GPIO4 → E22 RXD */
+#define LORA_RX_PIN  7   /* GPIO7 ← E22 TXD */
 #define LORA_AUX_PIN 21
 #define LORA_M0_PIN  15
 #define LORA_M1_PIN  16
@@ -336,16 +336,22 @@ extern "C" void app_main(void)
 
         /* Rover-only diagnostics ── */
 
-        /* SD log — one line per GNSS epoch */
+        /* SD log — on carr_soln change or every 10 s */
         {
+            static uint8_t  s_log_carr = 0xFF;
+            static uint32_t s_log_s    = 0;
             uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-            sdlog_writef("%lu,%d,%d,%d,%.3f,%.1f,%d,%.1f,%.2f,%d,%.0f\n",
-                         (unsigned long)now_s,
-                         pvt.gga_quality, pvt.carr_soln, pvt.num_sv,
-                         pvt.h_acc, pvt.diff_age_s,
-                         gnss_rtcm_arp_seen() ? 1 : 0,
-                         pvt.pdop,
-                         ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
+            if (pvt.carr_soln != s_log_carr || now_s - s_log_s >= 10) {
+                sdlog_writef("%lu,%d,%d,%d,%.3f,%.1f,%d,%.1f,%lu\n",
+                             (unsigned long)now_s,
+                             pvt.gga_quality, pvt.carr_soln, pvt.num_sv,
+                             pvt.h_acc, pvt.diff_age_s,
+                             gnss_rtcm_arp_seen() ? 1 : 0,
+                             pvt.pdop,
+                             (unsigned long)lora_tp.rx_bytes);
+                s_log_carr = pvt.carr_soln;
+                s_log_s    = now_s;
+            }
         }
 
         /* Log RTK state transitions */

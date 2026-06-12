@@ -15,9 +15,10 @@ typedef struct {
 } lora_transport_cfg_t;
 
 typedef struct {
-    transport_t          base;    /* vtable — MUST be first */
+    transport_t          base;      /* vtable — MUST be first */
     lora_transport_cfg_t cfg;
     RingbufHandle_t      rxbuf;
+    volatile uint32_t    rx_bytes;  /* total bytes received over RF, for link diagnostics */
 } lora_transport_t;
 
 /*

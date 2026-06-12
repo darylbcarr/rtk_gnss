@@ -73,11 +73,12 @@ static void broadcast_rtcm(void)
 
     static uint8_t  buf[RTCM_BUF_SIZE];
     static uint8_t  batch[RTCM_BATCH_SIZE];  /* accumulate a full epoch before sending */
-    uint32_t        frames     = 0;
-    uint32_t        bytes      = 0;
-    uint32_t        errors     = 0;
-    uint32_t        last_log   = (uint32_t)(esp_timer_get_time() / 1000);
-    bool            saw_arb    = false;   /* saw 1005 or 1006 — base has valid position */
+    uint32_t        frames       = 0;
+    uint32_t        bytes        = 0;
+    uint32_t        errors       = 0;
+    uint32_t        last_log     = (uint32_t)(esp_timer_get_time() / 1000);
+    uint32_t        last_svin_ms = 0;
+    bool            saw_arb      = false;   /* saw 1005 or 1006 — base has valid position */
 
     /* Track unique outbound RTCM types — first occurrence logged at INFO */
     uint16_t        tx_types[16];
@@ -87,7 +88,7 @@ static void broadcast_rtcm(void)
         /* Block until the first frame of an epoch arrives */
         int len = gnss_read_rtcm(buf, sizeof(buf), RTCM_TIMEOUT_MS);
 
-        /* Log every 10 s whether or not frames arrived */
+        /* Log every 10 s whether or not frames arrived; poll svin status */
         {
             uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
             if (now - last_log >= 10000) {
@@ -98,6 +99,23 @@ static void broadcast_rtcm(void)
                              (unsigned long)frames, (unsigned long)bytes, (unsigned long)errors,
                              saw_arb ? "YES" : "NO");
                 last_log = now;
+            }
+
+            /* Poll LC29H for survey-in progress every 10 s */
+            if (now - last_svin_ms >= 10000) {
+                gnss_poll_svin_status();
+                last_svin_ms = now;
+            }
+        }
+
+        /* Drain any fresh svin status that arrived since last poll */
+        {
+            gnss_svin_t sv;
+            if (gnss_get_svin_status(&sv)) {
+                xSemaphoreTake(s_svin_lock, portMAX_DELAY);
+                s_last_svin = sv;
+                xSemaphoreGive(s_svin_lock);
+                log_svin_progress(&sv);
             }
         }
 

@@ -9,11 +9,15 @@ static const char *TAG = "lora_tp";
 
 /* ── RX callback: lora RX task → ringbuffer ─────────────────────────── */
 
+static lora_transport_t *s_self;  /* set at init so the RX callback can reach rx_bytes */
+
 static void on_lora_rx(const uint8_t *buf, size_t len, void *ctx)
 {
     RingbufHandle_t rb = (RingbufHandle_t)ctx;
+    ESP_LOGI(TAG, "LoRa RX %u bytes", (unsigned)len);
     if (xRingbufferSend(rb, buf, len, 0) != pdTRUE)
         ESP_LOGW(TAG, "rxbuf full — dropped %u LoRa bytes", (unsigned)len);
+    if (s_self) s_self->rx_bytes += (uint32_t)len;
 }
 
 /* ── vtable implementation ───────────────────────────────────────────── */
@@ -22,7 +26,9 @@ static esp_err_t lora_tp_init(transport_t *t, const void *cfg)
 {
     (void)cfg;
     lora_transport_t *lt = (lora_transport_t *)t;
-    lt->rxbuf = xRingbufferCreate(4096, RINGBUF_TYPE_BYTEBUF);
+    lt->rxbuf    = xRingbufferCreate(4096, RINGBUF_TYPE_BYTEBUF);
+    lt->rx_bytes = 0;
+    s_self       = lt;
     if (!lt->rxbuf) return ESP_ERR_NO_MEM;
     return lora_init(lt->cfg.uart,
                      lt->cfg.tx_pin, lt->cfg.rx_pin,

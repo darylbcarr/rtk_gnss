@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static const char *TAG = "sdlog";
 
@@ -40,12 +41,14 @@ static void sdlog_task(void *arg)
             fwrite(line, 1, n, s_file);
             if (++unflushed >= FLUSH_INTERVAL || s_flush_req) {
                 fflush(s_file);
+                fsync(fileno(s_file));
                 unflushed    = 0;
                 s_flush_req  = false;
             }
         } else if (s_file && unflushed > 0) {
             /* Timeout with pending data — flush now */
             fflush(s_file);
+            fsync(fileno(s_file));
             unflushed   = 0;
             s_flush_req = false;
         }
@@ -132,10 +135,10 @@ esp_err_t sdlog_init(const sdlog_cfg_t *cfg, const char *mode_name)
     } else {
         fprintf(s_file,
                 "time_s,quality,carr_soln,sv_count,"
-                "h_acc_m,diff_age_s,arp_seen,pdop,"
-                "ups_v,ups_pct,ups_ma\n");
+                "h_acc_m,diff_age_s,arp_seen,pdop,lora_rx_B\n");
     }
     fflush(s_file);
+    fsync(fileno(s_file));
 
     /* ── Async write task ── */
     s_msg_buf = xMessageBufferCreate(MSG_BUF_BYTES);
