@@ -88,11 +88,11 @@ static int uart_read_all(uart_port_t uart, uint8_t *buf, int want, uint32_t time
 
 static esp_err_t e22_configure(void)
 {
-    set_mode(0, 1);   /* CONFIG mode: M0=0, M1=1 */
+    /* Enter CONFIG mode: set M1 HIGH without the set_mode() delay so we can
+     * catch the brief AUX LOW pulse (~1–2 ms) that confirms the transition. */
+    gpio_set_level(s_m0_pin, 0);
+    gpio_set_level(s_m1_pin, 1);
 
-    /* E22 must assert AUX LOW during the mode transition before going HIGH
-     * (ready).  If AUX never dips LOW we raced — the module was already
-     * HIGH and will not process C2 as a config command. */
     {
         bool saw_low = false;
         int64_t dl = esp_timer_get_time() + 300000LL;   /* 300 ms */
@@ -168,7 +168,7 @@ static esp_err_t e22_configure(void)
         uart_flush_input(s_uart);
         uart_write_bytes(s_uart, c1, sizeof(c1));
         uart_wait_tx_done(s_uart, pdMS_TO_TICKS(50));
-        vTaskDelay(pdMS_TO_TICKS(20));   /* E22 processing delay before response */
+        vTaskDelay(pdMS_TO_TICKS(100));  /* E22 processing delay — some modules need >20 ms */
         int rb_got = uart_read_all(s_uart, rb, sizeof(rb), 500);
         if (rb_got == 12 && rb[0] == 0xC1) {
             /* rb[3..5]=ADDH/ADDL/NETID  rb[6]=REG3  rb[7]=REG4  rb[8]=CHAN  rb[9]=REG6 */

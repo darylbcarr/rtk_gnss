@@ -14,7 +14,7 @@ static lora_transport_t *s_self;  /* set at init so the RX callback can reach rx
 static void on_lora_rx(const uint8_t *buf, size_t len, void *ctx)
 {
     RingbufHandle_t rb = (RingbufHandle_t)ctx;
-    ESP_LOGI(TAG, "LoRa RX %u bytes", (unsigned)len);
+    ESP_LOGD(TAG, "LoRa RX %u bytes", (unsigned)len);
     if (xRingbufferSend(rb, buf, len, 0) != pdTRUE)
         ESP_LOGW(TAG, "rxbuf full — dropped %u LoRa bytes", (unsigned)len);
     if (s_self) s_self->rx_bytes += (uint32_t)len;

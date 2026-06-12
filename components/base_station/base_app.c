@@ -180,6 +180,15 @@ static void broadcast_rtcm(void)
             }
         }
 
+        /* Drain self-received echo: E22 in transparent broadcast mode (addr 0xFFFF)
+         * receives its own transmissions and puts them in the rxbuf.  The base
+         * never consumes inbound LoRa data, so we discard it here to prevent
+         * the ringbuffer from filling and triggering drop warnings. */
+        if (s_transport) {
+            static uint8_t drain_buf[512];
+            while (transport_recv(s_transport, drain_buf, sizeof(drain_buf), 0) > 0) {}
+        }
+
     }
 }
 
