@@ -1,0 +1,4 @@
+time_s,event
+3,gnss: init OK — mode=ROVER
+3,gnss: PAIR513 (EPE enable) ack=ERROR
+410,rover: RTK FLOAT sv=24 h_acc=1.890m diff_age=1.7s

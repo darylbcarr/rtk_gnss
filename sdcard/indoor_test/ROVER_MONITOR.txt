@@ -1,0 +1,349 @@
+ (27) boot: ESP-IDF v5.4.1 2nd stage bootloader
+I (27) boot: compile time Jun  2 2026 06:57:06
+I (27) boot: Multicore bootloader
+I (27) boot: chip revision: v0.2
+I (30) boot: efuse block revision: v1.2
+I (33) boot.esp32s3: Boot SPI Speed : 80MHz
+I (37) boot.esp32s3: SPI Mode       : DIO
+I (41) boot.esp32s3: SPI Flash Size : 2MB
+I (45) boot: Enabling RNG early entropy source...
+I (49) boot: Partition Table:
+I (52) boot: ## Label            Usage          Type ST Offset   Length
+I (58) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (65) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (71) boot:  2 factory          factory app      00 00 00010000 00100000
+I (78) boot: End of partition table
+I (81) esp_image: segment 0: paddr=00010020 vaddr=3c040020 size=14624h ( 83492) map
+I (103) esp_image: segment 1: paddr=0002464c vaddr=3fc96c00 size=02c54h ( 11348) load
+I (106) esp_image: segment 2: paddr=000272a8 vaddr=40374000 size=08d70h ( 36208) load
+I (115) esp_image: segment 3: paddr=00030020 vaddr=42000020 size=3bbbch (244668) map
+I (158) esp_image: segment 4: paddr=0006bbe4 vaddr=4037cd70 size=09d84h ( 40324) load
+I (167) esp_image: segment 5: paddr=00075970 vaddr=600fe100 size=0001ch (    28) load
+I (175) boot: Loaded app from partition at offset 0x10000
+I (175) boot: Disabling RNG early entropy source...
+I (185) cpu_start: Multicore app
+I (194) cpu_start: Pro cpu start user code
+I (194) cpu_start: cpu freq: 160000000 Hz
+I (194) app_init: Application information:
+I (195) app_init: Project name:     rtk_gnss
+I (198) app_init: App version:      48288ca
+I (202) app_init: Compile time:     Jun 14 2026 07:15:29
+I (207) app_init: ELF file SHA256:  d9dc7f463...
+I (212) app_init: ESP-IDF:          v5.4.1
+I (216) efuse_init: Min chip rev:     v0.0
+I (219) efuse_init: Max chip rev:     v0.99 
+I (223) efuse_init: Chip rev:         v0.2
+I (227) heap_init: Initializing. RAM available for dynamic allocation:
+I (234) heap_init: At 3FC9E430 len 0004B2E0 (300 KiB): RAM
+I (239) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (244) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (249) heap_init: At 600FE11C len 00001ECC (7 KiB): RTCRAM
+I (255) spi_flash: detected chip: gd
+I (258) spi_flash: flash io: dio
+W (261) spi_flash: Detected size(16384k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+I (273) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (279) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (286) main_task: Started on CPU0
+I (306) main_task: Calling app_main()
+I (306) app: RTK GNSS — starting
+I (316) app: I2C scan:
+I (316) app:   device at 0x29
+I (326) app:   device at 0x3C
+I (536) display: SSD1306 ready at 0x3C
+I (776) imu: BNO055 ready at 0x29 (NDOF mode)
+E (776) i2c.master: I2C transaction unexpected nack detected
+E (776) i2c.master: s_i2c_synchronous_transaction(924): I2C transaction failed
+E (776) i2c.master: i2c_master_multi_buffer_transmit(1186): I2C transaction failed
+W (786) ups: INA219 not found at 0x41
+W (786) app: UPS not found — battery stats unavailable
+I (796) gpio: GPIO[17]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+I (796) gpio: GPIO[18]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+I (806) gpio: GPIO[38]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+I (816) encoder: encoder ready: CLK=17 DT=18 SW=38
+I (826) app: Device mode: ROVER
+I (826) gpio: GPIO[13]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (876) sdspi_transaction: cmd=5, R1 response: command not supported
+I (1006) sdlog: SD card mounted — SA08G 7388 MB
+I (1136) sdlog: Event log → /sdcard/ROVER_001.LOG
+I (1156) sdlog: Logging → /sdcard/ROVER_001.CSV
+I (1156) gpio: GPIO[15]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1156) gpio: GPIO[16]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1166) gpio: GPIO[21]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+W (1686) lora: AUX never dipped LOW on CONFIG entry — M1/AUX wiring or timing suspect
+I (1766) lora: E22 configured: 21 dBm ch52 (902.125 MHz)
+I (1866) lora: E22 regs: addr=0000 net=00 reg3=64 reg4=03 chan=52 reg6=00 crypt=0000
+I (1916) lora: LoRa ready
+I (1916) uart: ALREADY NULL
+I (1916) gnss: trying 460800 baud on TX=6 RX=1
+I (1976) gnss: LC29H (NMEA) detected at 460800 baud: $GNGGA,235944.412,,,,,0,00,99.99,,M,,M,,*42
+I (2036) gnss: $PQTMVERNO,LC29HEANR11A04S_RSA,2025/04/02,15:51:16*2D
+I (2136) gnss: $PAIR001,002,0*39
+I (2236) gnss: $PQTMCFGRTK,OK,1,1*3F
+I (2336) gnss: $PQTMCFGRCVRMODE,OK*64
+I (2536) gnss: $PQTMCFGRCVRMODE,OK,1*79
+I (2636) gnss: $PQTMCFGRTK,OK*3F
+I (2836) gnss: $PAIR001,513,2*3E
+I (2936) gnss: $PQTMSAVEPAR,OK*72
+I (3436) gnss: LC29H ready TX=6 RX=1 — RTK rover mode requested
+I (3436) gnss: $PQTMCFGRTK,OK,1,1*3F
+I (4046) app: Rover using LoRa corrections from local base
+I (4246) gnss: RTCM type 1074 (first seen, 1 types total)
+I (4246) gnss: RTCM MSM  station ID: 3335 (from type 1074)
+I (4246) gnss: RTCM type 1084 (first seen, 2 types total)
+I (4256) gnss: RTCM type 1094 (first seen, 3 types total)
+I (4256) gnss: RTCM type 1124 (first seen, 4 types total)
+I (4266) gnss: RTCM type 1114 (first seen, 5 types total)
+I (10306) gnss: RTCM → LC29H: 1486 B total
+I (21446) gnss: RTCM → LC29H: 3564 B total
+I (26466) gnss: $PAIR010,0,0,2423,48918*00
+I (26476) gnss: $PAIR010,0,1,2423,48918*01
+I (26476) gnss: $PAIR010,0,3,2423,48918*03
+I (26476) gnss: $PAIR010,0,2,2423,48918*02
+I (30276) app: pos sv=0 fix=0 rtk=0 lat=0.000000 lon=0.000000 hAcc=0.00m pdop=100.0
+I (32306) gnss: RTCM → LC29H: 5985 B total
+I (42356) gnss: RTCM → LC29H: 8737 B total
+I (52356) gnss: RTCM → LC29H: 11597 B total
+I (60336) app: pos sv=0 fix=0 rtk=0 lat=0.000000 lon=0.000000 hAcc=0.00m pdop=100.0
+I (62356) gnss: RTCM → LC29H: 14473 B total
+I (72356) gnss: RTCM → LC29H: 17333 B total
+I (76546) gnss: $PAIR010,0,0,2423,49088*01
+I (76546) gnss: $PAIR010,0,1,2423,49088*00
+I (76546) gnss: $PAIR010,0,3,2423,49088*02
+I (76556) gnss: $PAIR010,0,2,2423,49088*03
+I (82386) gnss: RTCM → LC29H: 20233 B total
+I (90406) app: pos sv=0 fix=0 rtk=0 lat=0.000000 lon=0.000000 hAcc=0.00m pdop=100.0
+I (91476) gnss: GGA: quality=1 station=0 diff_age=0.0s sv=4
+I (93026) gnss: RTCM → LC29H: 23327 B total
+I (103516) gnss: RTCM → LC29H: 26815 B total
+I (113516) gnss: RTCM → LC29H: 30185 B total
+I (120406) app: pos sv=10 fix=3 rtk=0 lat=40.978938 lon=-90.368992 hAcc=5.01m pdop=2.3
+I (123546) gnss: RTCM → LC29H: 33579 B total
+I (133566) gnss: RTCM → LC29H: 36864 B total
+I (136446) gnss: $PAIR010,0,0,2423,49148*0C
+I (136446) gnss: $PAIR010,0,1,2423,49148*0D
+I (136446) gnss: $PAIR010,0,3,2423,49148*0F
+I (136456) gnss: $PAIR010,0,2,2423,49148*0E
+I (143576) gnss: RTCM → LC29H: 40733 B total
+I (150456) app: pos sv=14 fix=3 rtk=0 lat=40.978938 lon=-90.368992 hAcc=2.91m pdop=1.5
+I (153586) gnss: RTCM → LC29H: 44383 B total
+I (164576) gnss: RTCM → LC29H: 48398 B total
+I (170596) gnss: GGA: quality=2 station=0 diff_age=0.0s sv=17
+I (174586) gnss: RTCM → LC29H: 52048 B total
+I (180286) app: pos sv=17 fix=3 rtk=0 lat=40.978943 lon=-90.368996 hAcc=2.13m pdop=1.1
+I (184596) gnss: RTCM → LC29H: 55743 B total
+I (195556) gnss: RTCM → LC29H: 60010 B total
+I (196456) gnss: $PAIR010,0,1,2423,49208*0A
+I (196456) gnss: $PAIR010,0,3,2423,49208*08
+I (196466) gnss: $PAIR010,0,2,2423,49208*09
+I (205556) gnss: RTCM → LC29H: 63920 B total
+I (210306) app: pos sv=19 fix=3 rtk=0 lat=40.978949 lon=-90.369001 hAcc=2.04m pdop=1.1
+I (215556) gnss: RTCM → LC29H: 67830 B total
+I (225556) gnss: RTCM → LC29H: 71740 B total
+I (235556) gnss: RTCM → LC29H: 75650 B total
+I (240346) app: pos sv=20 fix=3 rtk=0 lat=40.978953 lon=-90.369003 hAcc=2.07m pdop=1.3
+I (245576) gnss: RTCM → LC29H: 79614 B total
+I (255576) gnss: RTCM → LC29H: 83606 B total
+I (256446) gnss: $PAIR010,0,2,2423,49268*0F
+I (266566) gnss: RTCM → LC29H: 87958 B total
+I (270406) app: pos sv=21 fix=3 rtk=0 lat=40.978957 lon=-90.369005 hAcc=1.86m pdop=1.2
+I (276606) gnss: RTCM → LC29H: 92046 B total
+I (286626) gnss: RTCM → LC29H: 96234 B total
+I (296656) gnss: RTCM → LC29H: 100633 B total
+I (300286) app: pos sv=22 fix=3 rtk=0 lat=40.978961 lon=-90.369007 hAcc=1.86m pdop=1.2
+I (306686) gnss: RTCM → LC29H: 105089 B total
+I (316446) gnss: $PAIR010,0,2,2423,49328*0A
+I (317646) gnss: RTCM → LC29H: 109940 B total
+I (327676) gnss: RTCM → LC29H: 114354 B total
+I (330356) app: pos sv=23 fix=3 rtk=0 lat=40.978965 lon=-90.369008 hAcc=1.71m pdop=1.0
+I (337676) gnss: RTCM → LC29H: 118784 B total
+I (347676) gnss: RTCM → LC29H: 123294 B total
+I (357686) gnss: RTCM → LC29H: 127844 B total
+I (360426) app: pos sv=23 fix=3 rtk=0 lat=40.978971 lon=-90.369009 hAcc=2.07m pdop=1.3
+I (367686) gnss: RTCM → LC29H: 132410 B total
+I (376446) gnss: $PAIR010,0,2,2423,49388*00
+I (377696) gnss: RTCM → LC29H: 137032 B total
+I (387696) gnss: RTCM → LC29H: 141654 B total
+I (390286) app: pos sv=23 fix=3 rtk=0 lat=40.978978 lon=-90.369010 hAcc=1.83m pdop=1.1
+I (397706) gnss: RTCM → LC29H: 146347 B total
+I (407716) gnss: RTCM → LC29H: 151121 B total
+I (408736) gnss: RTCM type 1005 (first seen, 6 types total)
+I (408736) gnss: RTCM ARP  station ID: 3335 (type 1005)
+I (410126) gnss: GGA: quality=5 station=3335 diff_age=1.7s sv=24
+I (410336) app: RTK FLOAT  sv=24 hAcc=1.890m
+I (417746) gnss: RTCM → LC29H: 156151 B total
+I (420366) app: pos sv=24 fix=3 rtk=1 lat=40.979001 lon=-90.369018 hAcc=1.59m pdop=0.9
+I (427746) gnss: RTCM → LC29H: 161181 B total
+I (436446) gnss: $PAIR010,0,2,2423,49448*0B
+I (437746) gnss: RTCM → LC29H: 166187 B total
+I (448736) gnss: RTCM → LC29H: 171624 B total
+I (450436) app: pos sv=25 fix=3 rtk=1 lat=40.978974 lon=-90.369033 hAcc=1.71m pdop=0.9
+I (458736) gnss: RTCM → LC29H: 176582 B total
+I (468746) gnss: RTCM → LC29H: 181552 B total
+I (478746) gnss: RTCM → LC29H: 186522 B total
+I (480316) app: pos sv=26 fix=3 rtk=1 lat=40.978981 lon=-90.369026 hAcc=1.50m pdop=0.9
+I (489746) gnss: RTCM → LC29H: 191989 B total
+I (496446) gnss: $PAIR010,0,2,2423,49508*0E
+I (499746) gnss: RTCM → LC29H: 196953 B total
+I (509746) gnss: RTCM → LC29H: 201917 B total
+I (510386) app: pos sv=25 fix=3 rtk=1 lat=40.978998 lon=-90.369026 hAcc=1.77m pdop=1.1
+I (520746) gnss: RTCM → LC29H: 207378 B total
+I (531736) gnss: RTCM → LC29H: 212779 B total
+I (540256) app: pos sv=26 fix=3 rtk=1 lat=40.979017 lon=-90.369024 hAcc=1.56m pdop=0.9
+I (541736) gnss: RTCM → LC29H: 217677 B total
+I (551736) gnss: RTCM → LC29H: 222617 B total
+I (561746) gnss: RTCM → LC29H: 227557 B total
+I (570336) app: pos sv=27 fix=3 rtk=1 lat=40.979028 lon=-90.369005 hAcc=1.65m pdop=1.0
+I (572736) gnss: RTCM → LC29H: 233024 B total
+I (582746) gnss: RTCM → LC29H: 237994 B total
+I (592746) gnss: RTCM → LC29H: 243000 B total
+I (600406) app: pos sv=27 fix=3 rtk=1 lat=40.979041 lon=-90.369002 hAcc=1.74m pdop=1.0
+I (603476) gnss: RTCM → LC29H: 248632 B total
+I (613476) gnss: RTCM → LC29H: 253870 B total
+I (623496) gnss: RTCM → LC29H: 259169 B total
+I (630306) app: pos sv=27 fix=3 rtk=1 lat=40.979043 lon=-90.368997 hAcc=1.86m pdop=1.0
+I (633506) gnss: RTCM → LC29H: 264549 B total
+I (643746) gnss: RTCM → LC29H: 269988 B total
+I (653746) gnss: RTCM → LC29H: 275398 B total
+I (660386) app: pos sv=28 fix=3 rtk=1 lat=40.979038 lon=-90.368992 hAcc=1.65m pdop=1.1
+I (663756) gnss: RTCM → LC29H: 280856 B total
+I (673756) gnss: RTCM → LC29H: 286346 B total
+I (683756) gnss: RTCM → LC29H: 291836 B total
+I (690286) app: pos sv=30 fix=3 rtk=1 lat=40.979042 lon=-90.368994 hAcc=1.68m pdop=0.9
+I (693796) gnss: RTCM → LC29H: 297388 B total
+I (703806) gnss: RTCM → LC29H: 303030 B total
+I (714146) gnss: RTCM → LC29H: 308835 B total
+I (720416) app: pos sv=29 fix=3 rtk=1 lat=40.979044 lon=-90.368992 hAcc=1.53m pdop=0.9
+I (724166) gnss: RTCM → LC29H: 314459 B total
+I (734796) gnss: RTCM → LC29H: 320573 B total
+I (736446) gnss: $PAIR010,0,0,2423,49628*0D
+I (745526) gnss: RTCM → LC29H: 326785 B total
+I (750306) app: pos sv=29 fix=3 rtk=1 lat=40.979043 lon=-90.368989 hAcc=1.50m pdop=0.9
+I (755796) gnss: RTCM → LC29H: 332524 B total
+I (765796) gnss: RTCM → LC29H: 338214 B total
+I (775796) gnss: RTCM → LC29H: 343896 B total
+I (780426) app: pos sv=30 fix=3 rtk=1 lat=40.979038 lon=-90.368979 hAcc=1.50m pdop=0.9
+I (785796) gnss: RTCM → LC29H: 349574 B total
+I (796456) gnss: $PAIR010,0,0,2423,49688*07
+I (796536) gnss: RTCM → LC29H: 355736 B total
+I (806756) gnss: RTCM → LC29H: 361339 B total
+I (810336) app: pos sv=32 fix=3 rtk=1 lat=40.979040 lon=-90.368966 hAcc=1.56m pdop=1.0
+I (816756) gnss: RTCM → LC29H: 366943 B total
+I (827496) gnss: RTCM → LC29H: 372736 B total
+I (837506) gnss: RTCM → LC29H: 378567 B total
+I (840456) app: pos sv=32 fix=3 rtk=1 lat=40.979037 lon=-90.368967 hAcc=1.47m pdop=1.1
+I (847746) gnss: RTCM → LC29H: 384160 B total
+I (856456) gnss: $PAIR010,0,0,2423,49748*0A
+I (857766) gnss: RTCM → LC29H: 389797 B total
+I (867766) gnss: RTCM → LC29H: 395503 B total
+I (870336) app: pos sv=32 fix=3 rtk=1 lat=40.979040 lon=-90.368958 hAcc=1.56m pdop=1.0
+I (878496) gnss: RTCM → LC29H: 401408 B total
+I (888516) gnss: RTCM → LC29H: 407184 B total
+I (898556) gnss: RTCM → LC29H: 412910 B total
+I (900436) app: pos sv=32 fix=3 rtk=1 lat=40.979041 lon=-90.368954 hAcc=1.56m pdop=1.0
+I (908786) gnss: RTCM → LC29H: 418798 B total
+I (916446) gnss: $PAIR010,0,0,2423,49808*01
+I (918786) gnss: RTCM → LC29H: 424578 B total
+I (928786) gnss: RTCM → LC29H: 430328 B total
+I (930316) app: pos sv=32 fix=3 rtk=1 lat=40.979040 lon=-90.368957 hAcc=1.62m pdop=0.9
+I (939546) gnss: RTCM → LC29H: 436560 B total
+I (949536) gnss: RTCM → LC29H: 442280 B total
+I (959546) gnss: RTCM → LC29H: 448072 B total
+I (960416) app: pos sv=29 fix=3 rtk=1 lat=40.979046 lon=-90.368951 hAcc=1.62m pdop=0.9
+I (969546) gnss: RTCM → LC29H: 453858 B total
+I (976446) gnss: $PAIR010,0,0,2423,49868*07
+I (979546) gnss: RTCM → LC29H: 459638 B total
+I (989776) gnss: RTCM → LC29H: 465404 B total
+I (990316) app: pos sv=31 fix=3 rtk=1 lat=40.979053 lon=-90.368951 hAcc=1.59m pdop=0.9
+I (1000496) gnss: RTCM → LC29H: 471040 B total
+I (1010506) gnss: RTCM → LC29H: 477128 B total
+I (1020406) app: pos sv=32 fix=3 rtk=1 lat=40.979059 lon=-90.368949 hAcc=1.59m pdop=1.0
+I (1020546) gnss: RTCM → LC29H: 482808 B total
+I (1030776) gnss: RTCM → LC29H: 488566 B total
+I (1036446) gnss: $PAIR010,0,0,2423,49928*02
+I (1036446) gnss: $PAIR010,0,1,2423,49928*03
+I (1040776) gnss: RTCM → LC29H: 494266 B total
+I (1050316) app: pos sv=32 fix=3 rtk=1 lat=40.979055 lon=-90.368947 hAcc=1.53m pdop=0.9
+I (1050786) gnss: RTCM → LC29H: 499966 B total
+I (1061536) gnss: RTCM → LC29H: 506178 B total
+I (1071776) gnss: RTCM → LC29H: 511936 B total
+I (1080436) app: pos sv=33 fix=3 rtk=1 lat=40.979054 lon=-90.368940 hAcc=1.62m pdop=1.1
+I (1081776) gnss: RTCM → LC29H: 517668 B total
+I (1091776) gnss: RTCM → LC29H: 523368 B total
+I (1096446) gnss: $PAIR010,0,1,2423,49988*09
+I (1102536) gnss: RTCM → LC29H: 529544 B total
+I (1110346) app: pos sv=32 fix=3 rtk=1 lat=40.979055 lon=-90.368938 hAcc=1.56m pdop=1.0
+I (1112536) gnss: RTCM → LC29H: 535202 B total
+I (1122536) gnss: RTCM → LC29H: 540672 B total
+I (1132776) gnss: RTCM → LC29H: 546616 B total
+I (1140256) app: pos sv=32 fix=3 rtk=1 lat=40.979065 lon=-90.368946 hAcc=1.65m pdop=1.0
+I (1143546) gnss: RTCM → LC29H: 552822 B total
+I (1153546) gnss: RTCM → LC29H: 558602 B total
+I (1156446) gnss: $PAIR010,0,1,2423,50048*04
+I (1163556) gnss: RTCM → LC29H: 564400 B total
+I (1170336) app: pos sv=31 fix=3 rtk=1 lat=40.979058 lon=-90.368937 hAcc=1.83m pdop=1.1
+I (1173556) gnss: RTCM → LC29H: 570216 B total
+I (1183816) gnss: RTCM → LC29H: 576134 B total
+I (1193816) gnss: RTCM → LC29H: 582042 B total
+I (1200456) app: pos sv=32 fix=3 rtk=1 lat=40.979052 lon=-90.368930 hAcc=1.59m pdop=0.9
+I (1203816) gnss: RTCM → LC29H: 587962 B total
+I (1213816) gnss: RTCM → LC29H: 593882 B total
+I (1216446) gnss: $PAIR010,0,1,2423,50108*01
+I (1223816) gnss: RTCM → LC29H: 599802 B total
+I (1230336) app: pos sv=32 fix=3 rtk=1 lat=40.979050 lon=-90.368926 hAcc=2.04m pdop=1.2
+I (1233816) gnss: RTCM → LC29H: 605722 B total
+I (1243816) gnss: RTCM → LC29H: 611642 B total
+I (1253816) gnss: RTCM → LC29H: 617562 B total
+I (1260456) app: pos sv=32 fix=3 rtk=1 lat=40.979047 lon=-90.368925 hAcc=2.13m pdop=1.2
+I (1263816) gnss: RTCM → LC29H: 623482 B total
+I (1273816) gnss: RTCM → LC29H: 629402 B total
+I (1276456) gnss: $PAIR010,0,1,2423,50168*07
+I (1283816) gnss: RTCM → LC29H: 635322 B total
+I (1290356) app: pos sv=32 fix=3 rtk=1 lat=40.979045 lon=-90.368932 hAcc=2.13m pdop=1.4
+I (1293816) gnss: RTCM → LC29H: 641242 B total
+I (1303826) gnss: RTCM → LC29H: 647168 B total
+I (1313826) gnss: RTCM → LC29H: 653223 B total
+I (1320456) app: pos sv=31 fix=3 rtk=1 lat=40.979045 lon=-90.368930 hAcc=2.25m pdop=1.1
+I (1323836) gnss: RTCM → LC29H: 659239 B total
+I (1333836) gnss: RTCM → LC29H: 665249 B total
+I (1336446) gnss: $PAIR010,0,1,2423,50228*00
+I (1343836) gnss: RTCM → LC29H: 671259 B total
+I (1350376) app: pos sv=31 fix=3 rtk=1 lat=40.979047 lon=-90.368937 hAcc=1.89m pdop=1.1
+I (1353836) gnss: RTCM → LC29H: 677269 B total
+I (1364166) gnss: RTCM → LC29H: 683451 B total
+I (1374196) gnss: RTCM → LC29H: 689509 B total
+I (1380466) app: pos sv=32 fix=3 rtk=1 lat=40.979016 lon=-90.368935 hAcc=2.04m pdop=1.5
+I (1384846) gnss: RTCM → LC29H: 696080 B total
+I (1395186) gnss: RTCM → LC29H: 702370 B total
+I (1396446) gnss: $PAIR010,0,1,2423,50288*0A
+I (1405186) gnss: RTCM → LC29H: 708470 B total
+I (1410366) app: pos sv=32 fix=3 rtk=1 lat=40.978979 lon=-90.368931 hAcc=1.92m pdop=1.2
+I (1415186) gnss: RTCM → LC29H: 714600 B total
+I (1425826) gnss: RTCM → LC29H: 720896 B total
+I (1435826) gnss: RTCM → LC29H: 726977 B total
+I (1440276) app: pos sv=33 fix=3 rtk=1 lat=40.978968 lon=-90.368944 hAcc=1.86m pdop=1.3
+I (1445826) gnss: RTCM → LC29H: 732911 B total
+I (1455826) gnss: RTCM → LC29H: 738861 B total
+I (1456446) gnss: $PAIR010,0,1,2423,50348*07
+I (1465826) gnss: RTCM → LC29H: 744811 B total
+I (1470416) app: pos sv=32 fix=3 rtk=1 lat=40.978976 lon=-90.368941 hAcc=2.91m pdop=1.8
+I (1475826) gnss: RTCM → LC29H: 750749 B total
+I (1486166) gnss: RTCM → LC29H: 756723 B total
+I (1496186) gnss: RTCM → LC29H: 762593 B total
+I (1500296) app: pos sv=32 fix=3 rtk=1 lat=40.978971 lon=-90.368932 hAcc=2.76m pdop=1.8
+I (1506186) gnss: RTCM → LC29H: 768478 B total
+I (1516186) gnss: RTCM → LC29H: 774408 B total
+I (1516446) gnss: $PAIR010,0,1,2423,50408*04
+I (1526186) gnss: RTCM → LC29H: 780344 B total
+I (1530406) app: pos sv=32 fix=3 rtk=1 lat=40.978974 lon=-90.368939 hAcc=1.65m pdop=1.1
+I (1536186) gnss: RTCM → LC29H: 786334 B total
+I (1546186) gnss: RTCM → LC29H: 792318 B total
+I (1556186) gnss: RTCM → LC29H: 798218 B total
+I (1560306) app: pos sv=32 fix=3 rtk=1 lat=40.978980 lon=-90.368938 hAcc=1.77m pdop=1.2
+I (1566186) gnss: RTCM → LC29H: 804148 B total
+I (1576196) gnss: RTCM → LC29H: 810078 B total
+I (1576446) gnss: $PAIR010,0,1,2423,50468*02
+I (1586816) gnss: RTCM → LC29H: 816420 B total
+I (1590426) app: pos sv=32 fix=3 rtk=1 lat=40.978982 lon=-90.368942 hAcc=1.95m pdop=1.2
+I (1596816) gnss: RTCM → LC29H: 822314 B total
+I (1606826) gnss: RTCM → LC29H: 828262 B total
+

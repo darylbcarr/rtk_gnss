@@ -1,0 +1,466 @@
+I (27) boot: ESP-IDF v5.4.1 2nd stage bootloader
+I (27) boot: compile time Jun  2 2026 06:57:06
+I (27) boot: Multicore bootloader
+I (27) boot: chip revision: v0.2
+I (30) boot: efuse block revision: v1.2
+I (33) boot.esp32s3: Boot SPI Speed : 80MHz
+I (37) boot.esp32s3: SPI Mode       : DIO
+I (41) boot.esp32s3: SPI Flash Size : 2MB
+I (45) boot: Enabling RNG early entropy source...
+I (49) boot: Partition Table:
+I (52) boot: ## Label            Usage          Type ST Offset   Length
+I (58) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (65) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (71) boot:  2 factory          factory app      00 00 00010000 00100000
+I (78) boot: End of partition table
+I (81) esp_image: segment 0: paddr=00010020 vaddr=3c040020 size=14624h ( 83492) map
+I (103) esp_image: segment 1: paddr=0002464c vaddr=3fc96c00 size=02c54h ( 11348) load
+I (106) esp_image: segment 2: paddr=000272a8 vaddr=40374000 size=08d70h ( 36208) load
+I (115) esp_image: segment 3: paddr=00030020 vaddr=42000020 size=3bbbch (244668) map
+I (158) esp_image: segment 4: paddr=0006bbe4 vaddr=4037cd70 size=09d84h ( 40324) load
+I (167) esp_image: segment 5: paddr=00075970 vaddr=600fe100 size=0001ch (    28) load
+I (175) boot: Loaded app from partition at offset 0x10000
+I (175) boot: Disabling RNG early entropy source...
+I (185) cpu_start: Multicore app
+I (194) cpu_start: Pro cpu start user code
+I (194) cpu_start: cpu freq: 160000000 Hz
+I (194) app_init: Application information:
+I (195) app_init: Project name:     rtk_gnss
+I (198) app_init: App version:      48288ca
+I (202) app_init: Compile time:     Jun 14 2026 07:15:29
+I (207) app_init: ELF file SHA256:  d9dc7f463...
+I (212) app_init: ESP-IDF:          v5.4.1
+I (216) efuse_init: Min chip rev:     v0.0
+I (219) efuse_init: Max chip rev:     v0.99 
+I (223) efuse_init: Chip rev:         v0.2
+I (227) heap_init: Initializing. RAM available for dynamic allocation:
+I (234) heap_init: At 3FC9E430 len 0004B2E0 (300 KiB): RAM
+I (239) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (244) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (249) heap_init: At 600FE11C len 00001ECC (7 KiB): RTCRAM
+I (255) spi_flash: detected chip: gd
+I (258) spi_flash: flash io: dio
+W (261) spi_flash: Detected size(16384k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+I (273) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (279) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (286) main_task: Started on CPU0
+I (306) main_task: Calling app_main()
+I (306) app: RTK GNSS — starting
+I (326) app: I2C scan:
+I (336) app:   device at 0x29
+I (336) app:   device at 0x3C
+I (546) display: SSD1306 ready at 0x3C
+I (796) imu: BNO055 ready at 0x29 (NDOF mode)
+E (796) i2c.master: I2C transaction unexpected nack detected
+E (796) i2c.master: s_i2c_synchronous_transaction(924): I2C transaction failed
+E (796) i2c.master: i2c_master_multi_buffer_transmit(1186): I2C transaction failed
+W (806) ups: INA219 not found at 0x41
+W (806) app: UPS not found — battery stats unavailable
+I (816) gpio: GPIO[17]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+I (816) gpio: GPIO[18]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+I (826) gpio: GPIO[38]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+I (836) encoder: encoder ready: CLK=17 DT=18 SW=38
+I (846) app: Device mode: BASE
+I (846) gpio: GPIO[13]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (896) sdspi_transaction: cmd=5, R1 response: command not supported
+I (1026) sdlog: SD card mounted — SA08G 7388 MB
+I (1126) sdlog: Event log → /sdcard/BASE_001.LOG
+I (1306) sdlog: Logging → /sdcard/BASE_001.CSV
+I (1306) gpio: GPIO[15]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1306) gpio: GPIO[16]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1316) gpio: GPIO[21]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+W (1836) lora: AUX never dipped LOW on CONFIG entry — M1/AUX wiring or timing suspect
+I (1916) lora: E22 configured: 21 dBm ch52 (902.125 MHz)
+I (2016) lora: E22 regs: addr=0000 net=00 reg3=64 reg4=03 chan=52 reg6=00 crypt=0000
+I (2066) lora: LoRa ready
+I (2066) uart: ALREADY NULL
+I (2066) gnss: trying 460800 baud on TX=6 RX=1
+I (2206) gnss: LC29H (RTCM/base mode) detected at 460800 baud
+I (2256) gnss: LC29H ready TX=6 RX=1 — preserving saved base mode
+I (2486) gnss: Booted in base mode — applying SVIN config in-place
+I (2486) base: Base task started (min=300s acc=2.0m transport=LoRa)
+I (2486) gnss: $PAIR001,432,0*3E
+I (2686) gnss: $PAIR001,430,0*3C
+I (2886) gnss: $PAIR001,434,0*38
+I (3086) gnss: $PAIR001,436,0*3A
+I (3286) gnss: $PQTMCFGSVIN,OK*70
+I (3486) gnss: $PQTMSAVEPAR,OK*72
+I (3986) gnss: Requesting LC29H software reset (PQTMSRR)…
+I (3986) gnss: $PQTMSRR,ERROR,3*20
+I (8986) gnss: LC29H base init done — survey-in min=300s acc=2.0m
+I (8986) base: Base configured — starting RTCM broadcast immediately
+I (8986) base: Flushed 32 stale RTCM frames before broadcast
+I (9216) base: Outbound RTCM type 1074: 28 B station=3335 (total types: 1)
+I (9216) base: Outbound RTCM type 1084: 28 B station=3335 (total types: 2)
+I (9216) base: Outbound RTCM type 1094: 28 B station=3335 (total types: 3)
+I (9216) base: Outbound RTCM type 1124: 28 B station=3335 (total types: 4)
+I (9226) base: Outbound RTCM type 1114: 28 B station=3335 (total types: 5)
+I (11216) gnss: $PQTM,ERROR,3*73
+I (15906) gnss: $PAIR010,0,0,2423,48897*06
+I (15906) gnss: $PAIR010,0,1,2423,48897*07
+I (15906) gnss: $PAIR010,0,3,2423,48897*05
+I (15906) gnss: $PAIR010,0,2,2423,48897*04
+I (19916) base: RTCM broadcast: 55 frames 1766 B 0 errors  arb=NO
+I (21916) gnss: $PQTM,ERROR,3*73
+I (29916) base: RTCM broadcast: 105 frames 3640 B 0 errors  arb=NO
+I (32026) gnss: $PQTM,ERROR,3*73
+I (38806) gnss: $PAIR010,0,0,2423,49039*0B
+I (38806) gnss: $PAIR010,0,1,2423,49039*0A
+I (38816) gnss: $PAIR010,0,3,2423,49039*08
+I (38816) gnss: $PAIR010,0,2,2423,49039*09
+I (39936) base: RTCM broadcast: 151 frames 5852 B 0 errors  arb=NO
+I (42816) gnss: $PQTM,ERROR,3*73
+I (49936) base: RTCM broadcast: 201 frames 8565 B 0 errors  arb=NO
+I (52946) gnss: $PQTM,ERROR,3*73
+I (59936) base: RTCM broadcast: 251 frames 11425 B 0 errors  arb=NO
+I (63816) gnss: $PQTM,ERROR,3*73
+I (69936) base: RTCM broadcast: 301 frames 14301 B 0 errors  arb=NO
+I (73816) gnss: $PQTM,ERROR,3*73
+I (79936) base: RTCM broadcast: 351 frames 17161 B 0 errors  arb=NO
+I (83946) gnss: $PQTM,ERROR,3*73
+I (89946) base: RTCM broadcast: 401 frames 20045 B 0 errors  arb=NO
+I (93946) gnss: $PQTM,ERROR,3*73
+I (97806) gnss: $PAIR010,0,0,2423,49099*01
+I (97816) gnss: $PAIR010,0,1,2423,49099*00
+I (97816) gnss: $PAIR010,0,3,2423,49099*02
+I (97816) gnss: $PAIR010,0,2,2423,49099*03
+I (99946) base: RTCM broadcast: 451 frames 22991 B 0 errors  arb=NO
+I (103946) gnss: $PQTM,ERROR,3*73
+I (110816) base: RTCM broadcast: 505 frames 26421 B 0 errors  arb=NO
+I (113946) gnss: $PQTM,ERROR,3*73
+I (120946) base: RTCM broadcast: 556 frames 29911 B 0 errors  arb=NO
+I (124826) gnss: $PQTM,ERROR,3*73
+I (131816) base: RTCM broadcast: 610 frames 33514 B 0 errors  arb=NO
+I (134826) gnss: $PQTM,ERROR,3*73
+I (141816) base: RTCM broadcast: 660 frames 37022 B 0 errors  arb=NO
+I (144826) gnss: $PQTM,ERROR,3*73
+I (151816) base: RTCM broadcast: 710 frames 40648 B 0 errors  arb=NO
+I (155066) gnss: $PQTM,ERROR,3*73
+I (157806) gnss: $PAIR010,0,1,2423,49039*0A
+I (157806) gnss: $PAIR010,0,0,2423,49159*0C
+I (157816) gnss: $PAIR010,0,3,2423,49159*0F
+I (157816) gnss: $PAIR010,0,2,2423,49159*0E
+I (161816) base: RTCM broadcast: 760 frames 44298 B 0 errors  arb=NO
+I (165066) gnss: $PQTM,ERROR,3*73
+I (172066) base: RTCM broadcast: 813 frames 48185 B 0 errors  arb=NO
+I (175826) gnss: $PQTM,ERROR,3*73
+I (182066) base: RTCM broadcast: 863 frames 51835 B 0 errors  arb=NO
+I (185826) gnss: $PQTM,ERROR,3*73
+I (192066) base: RTCM broadcast: 913 frames 55512 B 0 errors  arb=NO
+I (195826) gnss: $PQTM,ERROR,3*73
+I (202816) base: RTCM broadcast: 965 frames 59508 B 0 errors  arb=NO
+I (206046) gnss: $PQTM,ERROR,3*73
+I (212816) base: RTCM broadcast: 1015 frames 63418 B 0 errors  arb=NO
+I (216046) gnss: $PQTM,ERROR,3*73
+I (217806) gnss: $PAIR010,0,3,2423,49219*08
+I (217816) gnss: $PAIR010,0,2,2423,49219*09
+I (222816) base: RTCM broadcast: 1065 frames 67328 B 0 errors  arb=NO
+I (226826) gnss: $PQTM,ERROR,3*73
+I (233036) base: RTCM broadcast: 1117 frames 71450 B 0 errors  arb=NO
+I (236826) gnss: $PQTM,ERROR,3*73
+I (243046) base: RTCM broadcast: 1167 frames 75360 B 0 errors  arb=NO
+I (246826) gnss: $PQTM,ERROR,3*73
+I (253046) base: RTCM broadcast: 1217 frames 79306 B 0 errors  arb=NO
+I (257046) gnss: $PQTM,ERROR,3*73
+I (263816) base: RTCM broadcast: 1270 frames 83486 B 0 errors  arb=NO
+I (267046) gnss: $PQTM,ERROR,3*73
+I (273816) base: RTCM broadcast: 1320 frames 87450 B 0 errors  arb=NO
+I (277046) gnss: $PQTM,ERROR,3*73
+I (277806) gnss: $PAIR010,0,1,2423,49159*0D
+I (277816) gnss: $PAIR010,0,2,2423,49279*0F
+I (283826) base: RTCM broadcast: 1370 frames 91498 B 0 errors  arb=NO
+I (287826) gnss: $PQTM,ERROR,3*73
+I (293826) base: RTCM broadcast: 1420 frames 95668 B 0 errors  arb=NO
+I (297826) gnss: $PQTM,ERROR,3*73
+I (304046) base: RTCM broadcast: 1472 frames 100247 B 0 errors  arb=NO
+I (307826) gnss: $PQTM,ERROR,3*73
+I (314826) base: RTCM broadcast: 1525 frames 104920 B 0 errors  arb=NO
+I (317826) gnss: $PQTM,ERROR,3*73
+I (325036) base: RTCM broadcast: 1577 frames 109550 B 0 errors  arb=NO
+I (328036) gnss: $PQTM,ERROR,3*73
+I (335816) base: RTCM broadcast: 1630 frames 114187 B 0 errors  arb=NO
+I (337806) gnss: $PAIR010,0,1,2423,49219*0A
+I (338036) gnss: $PQTM,ERROR,3*73
+I (345826) base: RTCM broadcast: 1680 frames 118657 B 0 errors  arb=NO
+I (348826) gnss: $PQTM,ERROR,3*73
+I (356036) base: RTCM broadcast: 1732 frames 123331 B 0 errors  arb=NO
+I (359046) gnss: $PQTM,ERROR,3*73
+I (366046) base: RTCM broadcast: 1782 frames 127881 B 0 errors  arb=NO
+I (369826) gnss: $PQTM,ERROR,3*73
+I (376816) base: RTCM broadcast: 1835 frames 132690 B 0 errors  arb=NO
+I (379826) gnss: $PQTM,ERROR,3*73
+I (386826) base: RTCM broadcast: 1885 frames 137312 B 0 errors  arb=NO
+I (389826) gnss: $PQTM,ERROR,3*73
+I (397046) base: RTCM broadcast: 1937 frames 142146 B 0 errors  arb=NO
+I (397806) gnss: $PAIR010,0,1,2423,49279*0C
+I (399826) gnss: $PQTM,ERROR,3*73
+I (407826) base: RTCM broadcast: 1990 frames 147099 B 0 errors  arb=NO
+I (410046) gnss: $PQTM,ERROR,3*73
+I (417046) base: Outbound RTCM type 1005: 25 B station=3335 (total types: 6)
+I (417046) base: Survey-in converged — RTCM 1005 in stream
+I (418046) base: RTCM broadcast: 2043 frames 152116 B 0 errors  arb=YES
+I (420046) gnss: $PQTM,ERROR,3*73
+I (428046) base: RTCM broadcast: 2103 frames 157146 B 0 errors  arb=YES
+I (430826) gnss: $PQTM,ERROR,3*73
+I (438046) base: RTCM broadcast: 2163 frames 162176 B 0 errors  arb=YES
+I (440836) gnss: $PQTM,ERROR,3*73
+I (448046) base: RTCM broadcast: 2223 frames 167176 B 0 errors  arb=YES
+I (451046) gnss: $PQTM,ERROR,3*73
+I (457806) gnss: $PAIR010,0,1,2423,49339*09
+I (458046) base: RTCM broadcast: 2283 frames 172116 B 0 errors  arb=YES
+I (461826) gnss: $PQTM,ERROR,3*73
+I (468826) base: RTCM broadcast: 2347 frames 177359 B 0 errors  arb=YES
+I (472046) gnss: $PQTM,ERROR,3*73
+I (478826) base: RTCM broadcast: 2407 frames 182329 B 0 errors  arb=YES
+I (482826) gnss: $PQTM,ERROR,3*73
+I (489046) base: RTCM broadcast: 2469 frames 187511 B 0 errors  arb=YES
+I (493046) gnss: $PQTM,ERROR,3*73
+I (499046) base: RTCM broadcast: 2529 frames 192481 B 0 errors  arb=YES
+I (503046) gnss: $PQTM,ERROR,3*73
+I (509046) base: RTCM broadcast: 2589 frames 197445 B 0 errors  arb=YES
+I (513046) gnss: $PQTM,ERROR,3*73
+I (517816) gnss: $PAIR010,0,1,2423,49399*03
+I (519046) base: RTCM broadcast: 2649 frames 202409 B 0 errors  arb=YES
+I (523826) gnss: $PQTM,ERROR,3*73
+I (529046) base: RTCM broadcast: 2709 frames 207373 B 0 errors  arb=YES
+I (534046) gnss: $PQTM,ERROR,3*73
+I (539826) base: RTCM broadcast: 2773 frames 212568 B 0 errors  arb=YES
+I (544826) gnss: $PQTM,ERROR,3*73
+I (550046) base: RTCM broadcast: 2835 frames 217678 B 0 errors  arb=YES
+I (554826) gnss: $PQTM,ERROR,3*73
+I (560046) base: RTCM broadcast: 2895 frames 222612 B 0 errors  arb=YES
+I (565046) gnss: $PQTM,ERROR,3*73
+I (570046) base: RTCM broadcast: 2955 frames 227552 B 0 errors  arb=YES
+I (575826) gnss: $PQTM,ERROR,3*73
+I (577806) gnss: $PAIR010,0,1,2423,49459*08
+I (580816) base: RTCM broadcast: 3019 frames 232807 B 0 errors  arb=YES
+I (586046) gnss: $PQTM,ERROR,3*73
+I (590826) base: RTCM broadcast: 3079 frames 237777 B 0 errors  arb=YES
+I (596046) gnss: $PQTM,ERROR,3*73
+I (601046) base: RTCM broadcast: 3141 frames 242989 B 0 errors  arb=YES
+I (606046) gnss: $PQTM,ERROR,3*73
+I (611056) base: RTCM broadcast: 3201 frames 248103 B 0 errors  arb=YES
+I (616066) gnss: $PQTM,ERROR,3*73
+I (621066) base: RTCM broadcast: 3261 frames 253341 B 0 errors  arb=YES
+I (626066) gnss: $PQTM,ERROR,3*73
+I (631826) base: RTCM broadcast: 3325 frames 258937 B 0 errors  arb=YES
+I (636066) gnss: $PQTM,ERROR,3*73
+I (637806) gnss: $PAIR010,0,0,2423,49519*0C
+I (637816) gnss: $PAIR010,0,1,2423,49519*0D
+I (641826) base: RTCM broadcast: 3385 frames 264317 B 0 errors  arb=YES
+I (646066) gnss: $PQTM,ERROR,3*73
+I (652056) base: RTCM broadcast: 3447 frames 269956 B 0 errors  arb=YES
+I (656066) gnss: $PQTM,ERROR,3*73
+I (662066) base: RTCM broadcast: 3507 frames 275372 B 0 errors  arb=YES
+I (666066) gnss: $PQTM,ERROR,3*73
+I (672066) base: RTCM broadcast: 3567 frames 280822 B 0 errors  arb=YES
+I (676066) gnss: $PQTM,ERROR,3*73
+I (682826) base: RTCM broadcast: 3631 frames 286626 B 0 errors  arb=YES
+I (686826) gnss: $PQTM,ERROR,3*73
+I (692826) base: RTCM broadcast: 3691 frames 292116 B 0 errors  arb=YES
+I (696996) gnss: $PQTM,ERROR,3*73
+I (697806) gnss: $PAIR010,0,0,2423,49579*0A
+I (697816) gnss: $PAIR010,0,1,2423,49579*0B
+I (702986) base: RTCM broadcast: 3752 frames 297825 B 0 errors  arb=YES
+I (707826) gnss: $PQTM,ERROR,3*73
+I (712986) base: RTCM broadcast: 3812 frames 303473 B 0 errors  arb=YES
+I (717826) gnss: $PQTM,ERROR,3*73
+I (723826) base: RTCM broadcast: 3877 frames 309521 B 0 errors  arb=YES
+I (727826) gnss: $PQTM,ERROR,3*73
+I (733826) base: RTCM broadcast: 3937 frames 315145 B 0 errors  arb=YES
+I (737826) gnss: $PQTM,ERROR,3*73
+I (743986) base: RTCM broadcast: 3998 frames 321010 B 0 errors  arb=YES
+I (747996) gnss: $PQTM,ERROR,3*73
+I (754066) base: RTCM broadcast: 4059 frames 326788 B 0 errors  arb=YES
+I (757816) gnss: $PAIR010,0,0,2423,49639*0D
+I (758836) gnss: $PQTM,ERROR,3*73
+I (764826) base: RTCM broadcast: 4123 frames 332804 B 0 errors  arb=YES
+I (768986) gnss: $PQTM,ERROR,3*73
+I (774986) base: RTCM broadcast: 4184 frames 338651 B 0 errors  arb=YES
+I (779066) gnss: $PQTM,ERROR,3*73
+I (785066) base: RTCM broadcast: 4245 frames 344413 B 0 errors  arb=YES
+I (789826) gnss: $PQTM,ERROR,3*73
+I (795826) base: RTCM broadcast: 4309 frames 350423 B 0 errors  arb=YES
+I (800066) gnss: $PQTM,ERROR,3*73
+I (805826) base: RTCM broadcast: 4369 frames 356065 B 0 errors  arb=YES
+I (810066) gnss: $PQTM,ERROR,3*73
+I (815826) base: RTCM broadcast: 4429 frames 361619 B 0 errors  arb=YES
+I (817816) gnss: $PAIR010,0,0,2423,49699*07
+I (820826) gnss: $PQTM,ERROR,3*73
+I (826056) base: RTCM broadcast: 4491 frames 367444 B 0 errors  arb=YES
+I (830836) gnss: $PQTM,ERROR,3*73
+I (836056) base: RTCM broadcast: 4551 frames 373000 B 0 errors  arb=YES
+I (841056) gnss: $PQTM,ERROR,3*73
+I (846056) base: RTCM broadcast: 4611 frames 378556 B 0 errors  arb=YES
+I (851826) gnss: $PQTM,ERROR,3*73
+I (856056) base: RTCM broadcast: 4671 frames 384106 B 0 errors  arb=YES
+I (861826) gnss: $PQTM,ERROR,3*73
+I (866056) base: RTCM broadcast: 4731 frames 389728 B 0 errors  arb=YES
+I (871826) gnss: $PQTM,ERROR,3*73
+I (876056) base: RTCM broadcast: 4791 frames 395428 B 0 errors  arb=YES
+I (877806) gnss: $PAIR010,0,0,2423,49759*0A
+I (881826) gnss: $PQTM,ERROR,3*73
+I (886826) base: RTCM broadcast: 4855 frames 401366 B 0 errors  arb=YES
+I (892046) gnss: $PQTM,ERROR,3*73
+I (896826) base: RTCM broadcast: 4915 frames 406952 B 0 errors  arb=YES
+I (902056) gnss: $PQTM,ERROR,3*73
+I (907066) base: RTCM broadcast: 4977 frames 412913 B 0 errors  arb=YES
+I (912066) gnss: $PQTM,ERROR,3*73
+I (917826) base: RTCM broadcast: 5041 frames 419078 B 0 errors  arb=YES
+I (922826) gnss: $PQTM,ERROR,3*73
+I (928066) base: RTCM broadcast: 5103 frames 425093 B 0 errors  arb=YES
+I (932836) gnss: $PQTM,ERROR,3*73
+I (937806) gnss: $PAIR010,0,0,2423,49819*01
+I (938066) base: RTCM broadcast: 5163 frames 430843 B 0 errors  arb=YES
+I (943066) gnss: $PQTM,ERROR,3*73
+I (948826) base: RTCM broadcast: 5227 frames 436900 B 0 errors  arb=YES
+I (953826) gnss: $PQTM,ERROR,3*73
+I (958826) base: RTCM broadcast: 5287 frames 442620 B 0 errors  arb=YES
+I (964066) gnss: $PQTM,ERROR,3*73
+I (968826) base: RTCM broadcast: 5347 frames 448418 B 0 errors  arb=YES
+I (974066) gnss: $PQTM,ERROR,3*73
+I (979066) base: RTCM broadcast: 5409 frames 454439 B 0 errors  arb=YES
+I (984826) gnss: $PQTM,ERROR,3*73
+I (989826) base: RTCM broadcast: 5473 frames 460562 B 0 errors  arb=YES
+I (995066) gnss: $PQTM,ERROR,3*73
+I (997806) gnss: $PAIR010,0,0,2423,49879*07
+I (997816) gnss: $PAIR010,0,1,2423,49879*06
+I (1000066) base: RTCM broadcast: 5535 frames 466483 B 0 errors  arb=YES
+I (1005066) gnss: $PQTM,ERROR,3*73
+I (1010826) base: RTCM broadcast: 5599 frames 472390 B 0 errors  arb=YES
+I (1015826) gnss: $PQTM,ERROR,3*73
+I (1021056) base: RTCM broadcast: 5661 frames 478235 B 0 errors  arb=YES
+I (1025826) gnss: $PQTM,ERROR,3*73
+I (1031066) base: RTCM broadcast: 5721 frames 483951 B 0 errors  arb=YES
+I (1035826) gnss: $PQTM,ERROR,3*73
+I (1041066) base: RTCM broadcast: 5781 frames 489651 B 0 errors  arb=YES
+I (1046066) gnss: $PQTM,ERROR,3*73
+I (1051826) base: RTCM broadcast: 5845 frames 495686 B 0 errors  arb=YES
+I (1056066) gnss: $PQTM,ERROR,3*73
+I (1057806) gnss: $PAIR010,0,0,2423,49939*02
+I (1057816) gnss: $PAIR010,0,1,2423,49939*03
+I (1061826) base: RTCM broadcast: 5905 frames 501386 B 0 errors  arb=YES
+I (1066066) gnss: $PQTM,ERROR,3*73
+I (1072066) base: RTCM broadcast: 5967 frames 507321 B 0 errors  arb=YES
+I (1076066) gnss: $PQTM,ERROR,3*73
+I (1082066) base: RTCM broadcast: 6027 frames 513021 B 0 errors  arb=YES
+I (1086066) gnss: $PQTM,ERROR,3*73
+I (1092066) base: RTCM broadcast: 6087 frames 518753 B 0 errors  arb=YES
+I (1096066) gnss: $PQTM,ERROR,3*73
+I (1102826) base: RTCM broadcast: 6151 frames 524788 B 0 errors  arb=YES
+I (1106066) gnss: $PQTM,ERROR,3*73
+I (1112826) base: RTCM broadcast: 6211 frames 530446 B 0 errors  arb=YES
+I (1116066) gnss: $PQTM,ERROR,3*73
+I (1117816) gnss: $PAIR010,0,0,2423,49999*08
+I (1117816) gnss: $PAIR010,0,1,2423,49999*09
+I (1123066) base: RTCM broadcast: 6273 frames 536333 B 0 errors  arb=YES
+I (1126066) gnss: $PQTM,ERROR,3*73
+I (1133826) base: RTCM broadcast: 6337 frames 542334 B 0 errors  arb=YES
+I (1136826) gnss: $PQTM,ERROR,3*73
+I (1144066) base: RTCM broadcast: 6399 frames 548271 B 0 errors  arb=YES
+I (1147066) gnss: $PQTM,ERROR,3*73
+I (1154066) base: RTCM broadcast: 6459 frames 553981 B 0 errors  arb=YES
+I (1157826) gnss: $PQTM,ERROR,3*73
+I (1164826) base: RTCM broadcast: 6523 frames 560110 B 0 errors  arb=YES
+I (1168066) gnss: $PQTM,ERROR,3*73
+I (1175066) base: RTCM broadcast: 6585 frames 566149 B 0 errors  arb=YES
+I (1177806) gnss: $PAIR010,0,0,2423,50059*05
+I (1177816) gnss: $PAIR010,0,1,2423,50059*04
+I (1178066) gnss: $PQTM,ERROR,3*73
+I (1185066) base: RTCM broadcast: 6645 frames 571965 B 0 errors  arb=YES
+I (1188826) gnss: $PQTM,ERROR,3*73
+I (1195416) base: RTCM broadcast: 6708 frames 578165 B 0 errors  arb=YES
+I (1198986) gnss: $PQTM,ERROR,3*73
+I (1205416) base: RTCM broadcast: 6768 frames 584073 B 0 errors  arb=YES
+I (1208986) gnss: $PQTM,ERROR,3*73
+I (1215826) base: RTCM broadcast: 6829 frames 590018 B 0 errors  arb=YES
+I (1219416) gnss: $PQTM,ERROR,3*73
+I (1225986) base: RTCM broadcast: 6890 frames 596095 B 0 errors  arb=YES
+I (1229416) gnss: $PQTM,ERROR,3*73
+I (1235986) base: RTCM broadcast: 6950 frames 602015 B 0 errors  arb=YES
+I (1237816) gnss: $PAIR010,0,0,2423,50119*00
+I (1237816) gnss: $PAIR010,0,1,2423,50119*01
+I (1239826) gnss: $PQTM,ERROR,3*73
+I (1245986) base: RTCM broadcast: 7010 frames 607935 B 0 errors  arb=YES
+I (1249826) gnss: $PQTM,ERROR,3*73
+I (1255986) base: RTCM broadcast: 7070 frames 613855 B 0 errors  arb=YES
+I (1259826) gnss: $PQTM,ERROR,3*73
+I (1265986) base: RTCM broadcast: 7130 frames 619775 B 0 errors  arb=YES
+I (1269826) gnss: $PQTM,ERROR,3*73
+I (1275986) base: RTCM broadcast: 7190 frames 625695 B 0 errors  arb=YES
+I (1279826) gnss: $PQTM,ERROR,3*73
+I (1285986) base: RTCM broadcast: 7250 frames 631615 B 0 errors  arb=YES
+I (1289826) gnss: $PQTM,ERROR,3*73
+I (1296826) base: RTCM broadcast: 7315 frames 637970 B 0 errors  arb=YES
+I (1297806) gnss: $PAIR010,0,0,2423,50179*06
+I (1297816) gnss: $PAIR010,0,1,2423,50179*07
+I (1299826) gnss: $PQTM,ERROR,3*73
+I (1306986) base: RTCM broadcast: 7376 frames 644047 B 0 errors  arb=YES
+I (1309996) gnss: $PQTM,ERROR,3*73
+I (1316996) base: RTCM broadcast: 7436 frames 650033 B 0 errors  arb=YES
+I (1319996) gnss: $PQTM,ERROR,3*73
+I (1327436) base: RTCM broadcast: 7500 frames 656489 B 0 errors  arb=YES
+I (1330826) gnss: $PQTM,ERROR,3*73
+I (1337436) base: RTCM broadcast: 7560 frames 662499 B 0 errors  arb=YES
+I (1340836) gnss: $PQTM,ERROR,3*73
+I (1347436) base: RTCM broadcast: 7620 frames 668509 B 0 errors  arb=YES
+I (1350996) gnss: $PQTM,ERROR,3*73
+I (1357436) base: RTCM broadcast: 7680 frames 674519 B 0 errors  arb=YES
+I (1357806) gnss: $PAIR010,0,0,2423,50239*01
+I (1357816) gnss: $PAIR010,0,1,2423,50239*00
+I (1360986) gnss: $PQTM,ERROR,3*73
+I (1367826) base: RTCM broadcast: 7741 frames 680554 B 0 errors  arb=YES
+I (1370996) gnss: $PQTM,ERROR,3*73
+I (1377826) base: RTCM broadcast: 7801 frames 686564 B 0 errors  arb=YES
+I (1381006) gnss: $PQTM,ERROR,3*73
+I (1387826) base: RTCM broadcast: 7861 frames 692682 B 0 errors  arb=YES
+I (1391006) gnss: $PQTM,ERROR,3*73
+I (1397826) base: RTCM broadcast: 7921 frames 698812 B 0 errors  arb=YES
+I (1401006) gnss: $PQTM,ERROR,3*73
+I (1407996) base: RTCM broadcast: 7982 frames 705078 B 0 errors  arb=YES
+I (1411826) gnss: $PQTM,ERROR,3*73
+I (1417806) gnss: $PAIR010,0,0,2423,50299*0B
+I (1417816) gnss: $PAIR010,0,1,2423,50299*0A
+I (1418006) base: RTCM broadcast: 8042 frames 711202 B 0 errors  arb=YES
+I (1421836) gnss: $PQTM,ERROR,3*73
+I (1428826) base: RTCM broadcast: 8107 frames 717725 B 0 errors  arb=YES
+I (1431996) gnss: $PQTM,ERROR,3*73
+I (1438826) base: RTCM broadcast: 8167 frames 723687 B 0 errors  arb=YES
+I (1441996) gnss: $PQTM,ERROR,3*73
+I (1448826) base: RTCM broadcast: 8227 frames 729629 B 0 errors  arb=YES
+I (1451996) gnss: $PQTM,ERROR,3*73
+I (1458996) base: RTCM broadcast: 8288 frames 735737 B 0 errors  arb=YES
+I (1462826) gnss: $PQTM,ERROR,3*73
+I (1468996) base: RTCM broadcast: 8348 frames 741687 B 0 errors  arb=YES
+I (1472836) gnss: $PQTM,ERROR,3*73
+I (1477806) gnss: $PAIR010,0,0,2423,50359*06
+I (1477816) gnss: $PAIR010,0,1,2423,50359*07
+I (1478996) base: RTCM broadcast: 8408 frames 747637 B 0 errors  arb=YES
+I (1482986) gnss: $PQTM,ERROR,3*73
+I (1489406) base: RTCM broadcast: 8472 frames 753916 B 0 errors  arb=YES
+I (1492996) gnss: $PQTM,ERROR,3*73
+I (1499826) base: RTCM broadcast: 8533 frames 759748 B 0 errors  arb=YES
+I (1503006) gnss: $PQTM,ERROR,3*73
+I (1509996) base: RTCM broadcast: 8594 frames 765799 B 0 errors  arb=YES
+I (1513826) gnss: $PQTM,ERROR,3*73
+I (1520006) base: RTCM broadcast: 8654 frames 771723 B 0 errors  arb=YES
+I (1523826) gnss: $PQTM,ERROR,3*73
+I (1530826) base: RTCM broadcast: 8719 frames 778074 B 0 errors  arb=YES
+I (1533826) gnss: $PQTM,ERROR,3*73
+I (1537816) gnss: $PAIR010,0,0,2423,50419*05
+I (1537816) gnss: $PAIR010,0,1,2423,50419*04
+I (1540826) base: RTCM broadcast: 8779 frames 784046 B 0 errors  arb=YES
+I (1544006) gnss: $PQTM,ERROR,3*73
+I (1550826) base: RTCM broadcast: 8839 frames 790036 B 0 errors  arb=YES
+I (1554006) gnss: $PQTM,ERROR,3*73
+I (1561006) base: RTCM broadcast: 8900 frames 796141 B 0 errors  arb=YES
+I (1564826) gnss: $PQTM,ERROR,3*73
+I (1571826) base: RTCM broadcast: 8965 frames 802477 B 0 errors  arb=YES
+I (1574826) gnss: $PQTM,ERROR,3*73
+I (1581996) base: RTCM broadcast: 9026 frames 808579 B 0 errors  arb=YES
+I (1584836) gnss: $PQTM,ERROR,3*73
+I (1591996) base: RTCM broadcast: 9086 frames 814509 B 0 errors  arb=YES
+I (1594996) gnss: $PQTM,ERROR,3*73
+I (1597816) gnss: $PAIR010,0,0,2423,50479*03
+I (1602826) base: RTCM broadcast: 9151 frames 820833 B 0 errors  arb=YES
+
