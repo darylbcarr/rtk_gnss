@@ -99,12 +99,12 @@ int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms);
 bool gnss_epe_valid(void);
 
 /*
- * PAIR513 acknowledgement status from the module.
+ * PQTMCFGMSGRATE acknowledgement status for PQTMEPE enable command.
  *  0  = not yet received (still waiting)
- *  1  = OK (EPE output enabled)
+ *  1  = OK ($PQTMEPE sentences will flow)
  * -1  = ERROR (command rejected — EPE will not arrive)
  */
-int gnss_pair513_ack(void);
+int gnss_epe_ack(void);
 
 #ifdef __cplusplus
 }

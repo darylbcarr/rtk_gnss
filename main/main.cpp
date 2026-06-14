@@ -223,11 +223,11 @@ extern "C" void app_main(void)
     }
     sdlog_event("gnss: init OK — mode=%s", mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
 
-    /* On rover, wait briefly for the PAIR513 ACK to arrive, then log it */
+    /* On rover, wait briefly for PQTMCFGMSGRATE ACK (EPE enable), then log it */
     if (mode == DEVICE_MODE_ROVER) {
         vTaskDelay(pdMS_TO_TICKS(600));
-        int ack = gnss_pair513_ack();
-        sdlog_event("gnss: PAIR513 (EPE enable) ack=%s",
+        int ack = gnss_epe_ack();
+        sdlog_event("gnss: PQTMCFGMSGRATE (EPE enable) ack=%s",
                     ack == 1 ? "OK" : ack == -1 ? "ERROR" : "no-response");
     }
 
@@ -381,6 +381,7 @@ extern "C" void app_main(void)
         /* Log when EPE takes over from the HDOP fallback */
         static bool s_epe_logged;
         if (!s_epe_logged && gnss_epe_valid()) {
+            ESP_LOGI(TAG, "rover: first PQTMEPE received — h_acc now %.3fm (was HDOP×3 estimate)", pvt.h_acc);
             sdlog_event("rover: first PQTMEPE received — h_acc now %.3fm (was HDOP estimate)", pvt.h_acc);
             s_epe_logged = true;
         }

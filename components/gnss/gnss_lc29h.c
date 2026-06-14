@@ -367,9 +367,9 @@ static void gnss_reader_task(void *arg)
                 parse_epe(nmea_buf, &pvt);
             } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0 ||
                        strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
-                /* Detect PAIR513 ACK: $PAIR001,513,0*cs = success, non-0 = error */
-                if (strncmp(nmea_buf + 1, "PAIR001,513,", 12) == 0) {
-                    s_pair513_ack = (nmea_buf[13] == '0') ? 1 : -1;
+                /* Detect PQTMCFGMSGRATE ACK for PQTMEPE enable */
+                if (strncmp(nmea_buf + 1, "PQTMCFGMSGRATE,", 15) == 0) {
+                    s_pair513_ack = (strncmp(nmea_buf + 16, "OK", 2) == 0) ? 1 : -1;
                 }
                 /* All PQTM and PAIR responses at INFO so query replies are visible */
                 ESP_LOGI(TAG, "%s", nmea_buf);
@@ -525,7 +525,7 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin,
         vTaskDelay(pdMS_TO_TICKS(100));
         pqtm_send("PQTMCFGRTK,W,1,1");   /* RTK enabled, corrections enabled */
         vTaskDelay(pdMS_TO_TICKS(200));
-        pqtm_send("PAIR513,1");           /* enable $PQTMEPE — actual EPE output */
+        pqtm_send("PQTMCFGMSGRATE,W,PQTMEPE,1,2"); /* enable $PQTMEPE output every epoch */
         vTaskDelay(pdMS_TO_TICKS(100));
         pqtm_send("PQTMSAVEPAR");         /* persist rover config to flash */
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -773,5 +773,5 @@ int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)
     return (int)item_size;
 }
 
-bool gnss_epe_valid(void)   { return s_epe_received; }
-int  gnss_pair513_ack(void) { return s_pair513_ack; }
+bool gnss_epe_valid(void) { return s_epe_received; }
+int  gnss_epe_ack(void)   { return s_pair513_ack; }
