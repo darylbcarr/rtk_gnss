@@ -1,0 +1,1431 @@
+Looking at both the E22-900T30D datasheet constraints and the ESP32-S3 N16R8 pin reservations before making a recommendation.
+
+  The ESP32-S3 N16R8 has several GPIO ranges to avoid:
+  - GPIO6–11: Internal Quad Flash
+  - GPIO33–37: Octal Flash/PSRAM (the N16R8 uses both, so these are consumed)
+  - GPIO0, 3, 45, 46: Strapping pins — avoid for M0/M1 especially, since their state at boot affects startup behavior
+
+  Suggested assignments:
+
+  ┌───────────────┬───────────────┬───────────┬────────────────────────────────────────────────────┐
+  │    E22 Pin    │ ESP32-S3 GPIO │ Direction │                     Rationale                      │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ TXD (E22→ESP) │ GPIO18        │ Input     │ UART1 RX                                           │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ RXD (ESP→E22) │ GPIO17        │ Output    │ UART1 TX                                           │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ AUX           │ GPIO4         │ Input     │ Interrupt-capable; use to detect module busy/ready │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ M0            │ GPIO5         │ Output    │ Clear of strapping and flash pins                  │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ M1            │ GPIO21        │ Output    │ Clear of strapping and flash pins                  │
+  └───────────────┴───────────────┴───────────┴────────────────────────────────────────────────────┘
+
+  A few things worth knowing before wiring:
+
+  Power: At 30 dBm (1 W) the E22-900T30D can draw ~700 mA peak during transmission. Don't power it from the ESP32-S3's onboard 3.3 V regulator — give it a dedicated supply capable
+  of the peak current. The logic I/O is 3.3 V compatible so no level shifting is needed.
+
+  AUX behaviour: AUX goes low while the module is busy (transmitting, receiving, changing config). It's worth wiring it to an interrupt-capable pin (all the ones above qualify) so
+  you can use gpio_isr_handler rather than polling.
+
+  M0/M1 at boot: Since M0/M1 are outputs driven by the ESP32-S3, they'll float briefly during reset. If the E22 latches mode on power-up before the ESP32 drives them, add 10 kΩ
+  pull-downs to default to normal UART mode (M0=0, M1=0) during the boot window.
+
+-------------------------------------------- 
+ 
+  Suggested pins for the second module (UART2, clear of flash/PSRAM/strapping pins):
+
+  ┌─────────────────┬────────┐
+  │     Signal      │  GPIO  │
+  ├─────────────────┼────────┤
+  │ TXD (ESP→E22-B) │ GPIO19 │
+  ├─────────────────┼────────┤
+  │ RXD (E22-B→ESP) │ GPIO20 │
+  ├─────────────────┼────────┤
+  │ AUX             │ GPIO1  │
+  ├─────────────────┼────────┤
+  │ M0              │ GPIO2  │
+  ├─────────────────┼────────┤
+  │ M1              │ GPIO38 │
+  └─────────────────┴────────┘
+
+ --------------------------------------------
+ 
+ 
+ I am running from 3.3V now. Can you drop the power output to the least and what other tests could be run to make sure modules work as expected?                                    
+
+● Good news: the code already sets E22TxPower::DBM21 in make_config() — that's the minimum the T30D supports, so power is already as low as it goes.
+
+  For tests, here's what's worth running to fully validate the modules:
+
+  1. Packet error rate (PER)
+  Send N packets from A, count how many B receives. The industry standard acceptance threshold is <1% PER. Most useful test for link reliability.
+
+  2. Round-trip latency statistics
+  Timestamp each ping/echo and compute min/max/average/jitter over ~100 samples. Gives a baseline to compare against if you change air rate or antenna later.
+
+  3. Noise floor
+  Enable rssi_noise on both modules and sample the ambient RSSI with no transmission. Tells you how clean the 900 MHz channel is in your environment.
+
+  4. Air rate sweep
+  Run the PER test at K1_2, K2_4, K9_6, and K19_2. Documents the speed/reliability tradeoff for your specific environment.
+
+  5. Maximum payload
+  Send 200-byte packets (the default sub-packet size limit). Verifies framing doesn't break at the boundary.
+
+  Want me to implement all of these as a structured test sequence that runs automatically and prints a summary report? Or is there a specific subset you want to start with?
+
+
+--------------------------------------------
+
+  I (xxx) RESULT: ========================================
+  I (xxx) RESULT:            TEST SUMMARY
+  I (xxx) RESULT: ========================================
+  I (xxx) RESULT: 1. Packet Error Rate (50 packets)
+  I (xxx) RESULT:    Received : 50 / 50  (0.0% loss)
+  I (xxx) RESULT:    RSSI     : min=-120  avg=-118  max=-115 dBm
+  I (xxx) RESULT: 2. Round-trip Latency (30 samples)
+  I (xxx) RESULT:    Min    : 420 ms
+  I (xxx) RESULT:    Avg    : 448 ms
+  I (xxx) RESULT:    Jitter :   8 ms
+  I (xxx) RESULT: 3. Noise Floor
+  I (xxx) RESULT:    Module A : -120 dBm          ← or "not supported"
+  I (xxx) RESULT: 4. Air Rate Sweep (20 packets each)
+  I (xxx) RESULT:    Rate        Rcvd/Sent   Loss    RSSI     RTT
+  I (xxx) RESULT:    1.2 kbps    20 / 20     0.0%  -118 dBm   890 ms
+  I (xxx) RESULT:    9.6 kbps    20 / 20     0.0%  -115 dBm   115 ms
+  I (xxx) RESULT: 5. Payload Sizes
+  I (xxx) RESULT:      1 bytes : PASS
+  I (xxx) RESULT:    200 bytes : PASS
+
+-------------------------------------------------
+
+I (324) gpio: GPIO[38]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (334) main: Configuring radios
+I (614) main: --- Test 3: Noise Floor ---
+I (2214) main: --- Test 1: Packet Error Rate (50 packets) ---
+I (129214) main: --- Test 2: Round-trip Latency (30 samples) ---
+I (205414) main: --- Test 4: Air Rate Sweep (4 rates x 20 packets) ---
+I (205414) main:   testing 1.2 kbps
+I (256814) main:   testing 2.4 kbps
+I (308214) main:   testing 4.8 kbps
+I (354394) main:   testing 9.6 kbps
+I (399774) main: --- Test 5: Payload Sizes (1/50/100/200 bytes) ---
+I (418494) RESULT: ========================================
+I (418494) RESULT:            TEST SUMMARY
+I (418494) RESULT: ========================================
+I (418494) RESULT: 1. Packet Error Rate (50 packets)
+I (418494) RESULT:    Received : 50 / 50  (0.0% loss)
+I (418504) RESULT:    RSSI     : min=-124  avg=-122  max=-111 dBm
+I (418504) RESULT: 2. Round-trip Latency (30 samples)
+I (418514) RESULT:    Min    : 2489 ms
+I (418514) RESULT:    Max    : 2490 ms
+I (418524) RESULT:    Avg    : 2489 ms
+I (418524) RESULT:    Jitter : 0 ms
+I (418524) RESULT: 3. Noise Floor
+I (418534) RESULT:    Module A : command not supported by firmware
+I (418534) RESULT:    Module B : command not supported by firmware
+I (418544) RESULT: 4. Air Rate Sweep (20 packets each)
+I (418544) RESULT:    Rate        Rcvd/Sent   Loss    RSSI     RTT
+I (418554) RESULT:    1.2 kbps    20 / 20       0.0%  -123 dBm  2490 ms
+I (418554) RESULT:    2.4 kbps    20 / 20       0.0%  -123 dBm  2490 ms
+I (418564) RESULT:    4.8 kbps    20 / 20       0.0%  -123 dBm  2229 ms
+I (418574) RESULT:    9.6 kbps    20 / 20       0.0%  -123 dBm  2170 ms
+I (418574) RESULT: 5. Payload Sizes
+I (418584) RESULT:       1 bytes : PASS
+I (418584) RESULT:      50 bytes : PASS
+I (418584) RESULT:     100 bytes : PASS
+I (418594) RESULT:     200 bytes : FAIL
+I (418594) RESULT: ========================================
+I (418604) main_task: Returned from app_main()
+
+---------------------------------------------
+
+● That's the smoking gun:
+
+  W (1456) lora: AUX never dipped LOW on CONFIG entry — M1/AUX wiring or timing suspect
+  W (2016) lora: E22 C2 write attempt 1: unexpected ACK (got 0 bytes)
+  ...
+  E (3136) lora: E22 C2 write failed after 3 attempts
+  W (3656) lora: E22 C1 readback failed (got 0 bytes)
+
+  The base E22 M1 pin is not wired to GPIO16. The E22 never entered CONFIG mode — it stayed in NORMAL mode at its factory-default channel. Because the C2 command arrived in NORMAL mode, the
+  E22 treated it as data to transmit over RF instead of a register-write command, and sent nothing back on TXD. The C1 readback likewise got transmitted as RF data.
+
+  The rover's C2 write succeeded, programming it to ch52. The base stayed at the factory-default channel (probably ch23 = 873 MHz). Different frequencies → rover hears nothing.
+
+  Fix: On the base breadboard, run a wire from ESP32 GPIO16 to the E22 M1 pin. While you're at it, check AUX too — AUX never dipped LOW also means AUX may be floating (should be connected E22
+  AUX → GPIO21). Without AUX, flow control during transmission won't work.
+
+  After wiring, you should see:
+  I (...) lora: AUX dipped LOW: M1 & AUX wiring confirmed
+  I (...) lora: E22 configured: 21 dBm ch52 (902.125 MHz)
+  I (...) lora: E22 regs: addr=0000 net=00 reg3=64 reg4=03 chan=52 reg6=00 crypt=0000
+
+  The clang diagnostics you're seeing are clangd not knowing the ESP-IDF include paths — not real build errors. idf.py build will compile fine.
+
+----------------------------------------------------
+ Good. Here's a summary of all changes made to lora.c:
+
+  ┌─────────────────────────────────┬───────────────────────────────────────────┬──────────────────────────────────┬──────────────────────────────────────────────────────────────┐
+  │            Location             │                  Before                   │              After               │                            Reason                            │
+  ├─────────────────────────────────┼───────────────────────────────────────────┼──────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ lora_init: UART install         │ ESP_ERROR_CHECK(uart_driver_install(...)) │ guarded by                       │ prevents panic on any future retry path                      │
+  │                                 │                                           │ uart_is_driver_installed         │                                                              │
+  ├─────────────────────────────────┼───────────────────────────────────────────┼──────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ lora_init: before first AUX     │ (nothing)                                 │ vTaskDelay(200 ms)               │ lets E22 assert AUX LOW during its boot sequence before we   │
+  │ wait                            │                                           │                                  │ start polling                                                │
+  ├─────────────────────────────────┼───────────────────────────────────────────┼──────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ lora_init: initial AUX wait     │ 2000 ms                                   │ 5000 ms                          │ cold E22 power-cycle can hold AUX LOW for >2 s               │
+  ├─────────────────────────────────┼───────────────────────────────────────────┼──────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ lora_init: configure retry      │ (none)                                    │ reset pins, 2 s wait, retry once │ recovers from a first-attempt timeout without forcing a full │
+  │                                 │                                           │                                  │  restart                                                     │
+  ├─────────────────────────────────┼───────────────────────────────────────────┼──────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ e22_configure: CONFIG mode AUX  │ 3000 ms                                   │ 5000 ms                          │ same cold-start margin                                       │
+  │ wait                            │                                           │                                  │                                                              │
+  ├─────────────────────────────────┼───────────────────────────────────────────┼──────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ e22_configure: NORMAL mode      │ 500 ms                                    │ 2000 ms                          │ 500 ms was too tight after a config write                    │
+  │ return                          │                                           │                                  │                                                              │
+  └─────────────────────────────────┴───────────────────────────────────────────┴──────────────────────────────────┴──────────────────────────────────────────────────────────────┘
+
+  The worst-case added latency on a clean boot is 200 ms (the settling delay). On a retry it's ~9 s extra before the task starts, but that path only fires on a problematic cold start.
+
+  The other two issues from the test (rover's LoRa RX silence, and the survey-in status never flowing back) are separate problems worth tackling next.
+
+------------------------------------------
+
+❯  now fix the rover not receiving LoRa                                                                                                                                                
+
+● Let me trace the full rover LoRa receive path before touching anything.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(find /home/daryl/Projects/rtk_gnss/main /home/daryl/Projects/rtk_gnss/components -name "*.c" -o -name "*.cpp" | xargs grep -l "rtcm_relay" 2>/dev/null)
+  ⎿  /home/daryl/Projects/rtk_gnss/main/main.cpp
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me look at how gnss_write_rtcm is implemented, and also check the gnss_lc29h.c changes since it's the active driver.
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Let me look at how gnss_init configures the LC29H differently for rover vs. base, and also check what UART is used by each peripheral.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Let me check the pin definitions and Kconfig for LoRa.
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Wait — GPIO4 is assigned to both LoRa TX and possibly GNSS. Let me check the GNSS pin definitions.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Let me look at what GNSS driver is actually compiled, and also check how the gnss_reader_task handles the UART — specifically whether it could consume bytes that should go to
+  gnss_write_rtcm.
+
+  Read 2 files (ctrl+o to expand)
+
+● The code architecture is sound: two separate UARTs (GNSS=UART_NUM_1, LoRa=UART_NUM_2), the relay task correctly bridges the LoRa ringbuffer to gnss_write_rtcm. The rover receiving
+  zero bytes (lora_rx_B=0) throughout the entire session means on_lora_rx was never called — which only happens if lora_rx_task was never created, i.e. lora_init failed and returned
+  early.
+
+  The fix I already applied to lora.c covers the rover too — same cold-start AUX timing issue, same code path. There are no rover-specific code changes needed.
+
+  However, looking at the lora_rx_task receive loop more carefully there's one real bug worth fixing:
+
+  Read 1 file (ctrl+o to expand)
+
+● The RX task itself is correct — the drain loop and callback path work fine. The core problem is exactly what I fixed for the base: the same lora_init cold-start AUX timeout that
+  kills the base in test 2 also killed the rover in test 1. Since it's the same function, the fix is already in place.
+
+  Let me verify the complete final state of lora.c to confirm all changes are coherent:
+
+  Read 1 file (ctrl+o to expand)
+
+● The file is exactly right. All six changes are in place and the overall structure is clean.
+
+  Here's the precise reason the rover was silent in test 1: the same cold-start AUX timing bug that killed the base in test 2 also killed the rover in test 1 — just inconsistently
+  across the two units. When lora_init timed out, it returned early at line 291 before xTaskCreate(lora_rx_task, ...) (line 308). No task → no on_lora_rx calls → lora_tp.rx_bytes
+  stays 0 for the entire session. lora_ok=false → correction_t=NULL → relay task also not started. The base in test 1 happened to boot fast enough to pass the original 2 s window; the
+  rover didn't.
+
+  The fix covers both units with the same code path:
+
+  ┌─────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │               Change                │                                                          Effect                                                           │
+  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 200 ms boot delay                   │ E22 has time to assert AUX LOW before we start polling, so the subsequent wait_aux_high actually waits for the right edge │
+  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5 s initial AUX wait (was 2 s)      │ Covers slower cold-start E22 modules                                                                                      │
+  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5 s CONFIG-mode AUX wait (was 3 s)  │ Same margin during register write                                                                                         │
+  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 2 s NORMAL-mode return (was 500 ms) │ Enough time for E22 to re-load NORMAL mode registers                                                                      │
+  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Retry with pin reset + 2 s settle   │ Catches the case where the first attempt still races                                                                      │
+  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ uart_is_driver_installed guard      │ Prevents panic on any future accidental second init                                                                       │
+  └─────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  The next problem from the test analysis is that the base survey-in status never flows back (svin columns always 0/0.00/0 in both BASE sessions). That's the third fix needed before
+
+---------------------------------
+
+Now fix the rover not receiving LoRa
+
+● Let me trace the full rover LoRa receive path before touching anything.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(find /home/daryl/Projects/rtk_gnss/main /home/daryl/Projects/rtk_gnss/components -name "*.c" -o -name "*.cpp" | xargs grep -l "rtcm_relay" 2>/dev/null)
+  ⎿  /home/daryl/Projects/rtk_gnss/main/main.cpp
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me look at how gnss_write_rtcm is implemented, and also check the gnss_lc29h.c changes since it's the active driver.
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Let me look at how gnss_init configures the LC29H differently for rover vs. base, and also check what UART is used by each peripheral.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Let me check the pin definitions and Kconfig for LoRa.
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Wait — GPIO4 is assigned to both LoRa TX and possibly GNSS. Let me check the GNSS pin definitions.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Let me look at what GNSS driver is actually compiled, and also check how the gnss_reader_task handles the UART — specifically whether it could consume bytes that should go to
+  gnss_write_rtcm.
+
+  Read 2 files (ctrl+o to expand)
+
+● The code architecture is sound: two separate UARTs (GNSS=UART_NUM_1, LoRa=UART_NUM_2), the relay task correctly bridges the LoRa ringbuffer to gnss_write_rtcm. The rover receiving
+  zero bytes (lora_rx_B=0) throughout the entire session means on_lora_rx was never called — which only happens if lora_rx_task was never created, i.e. lora_init failed and returned
+ ▐▛███▜▌   Claude Code v2.1.175
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~/Projects/rtk_gnss
+
+ ▎ Meet Fable 5, our newest model for complex, long-running work. Switch anytime with /model.
+ ▎ Included in your plan limits until Jun 22, then switch to usage credits to continue.
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+● Now I have the full picture. The parse_svinstatus function only handles the autonomous sentence form ($PQTMSVINSTATUS,...). When gnss_poll_svin_status() sends $PQTMSVINSTATUS,R, the
+  LC29H responds with the ACK-wrapped form $PQTM,PQTMSVINSTATUS,0,<data>. That sentence has nmea_buf+1 = "PQTM,PQTMSVINSTATUS,...", which falls through the specific check and hits
+  the generic PQTM INFO logger — data received, silently discarded, counter never set. Combined with the module apparently not emitting the autonomous form during the RTCM-heavy base
+  session, s_svin_updated stays false for the entire run.
+
+  Three concrete bugs:
+
+  1. Dispatch misses the query-response format — $PQTM,PQTMSVINSTATUS,0,... not caught by strncmp(nmea_buf+1,"PQTMSVINSTATUS",14)
+  2. parse_svinstatus has no field offset for the two formats — data offsets differ by 2 fields between autonomous (f[1]) and ACK-wrapped (f[3]) responses
+  3. No log in parse_svinstatus — impossible to confirm parsing fires without adding one
+
+-------------------------------------------------------------------------
+
+ Let's look at the menu/display in relation to the SD based outdoor test with L1/L5 antenna. Can the display on each (Base/Rover) display more salient information to indicate the    
+  current status of the test. Also, is the rover CSV storing lines too often?                                                                                                          
+  
+● Let me look at the display/UI code and the CSV logging to understand the current state before suggesting anything.
+
+  Searched for 2 patterns, read 5 files (ctrl+o to expand)
+
+● Now I have a complete picture. Let me assess before touching anything:
+
+  Rover CSV (yes, logging too often): The comment on line 341 says "every 10 s" but the condition on line 345 is >= 1 — every 1 second. A 17-minute test produces ~1020 rows instead of
+  ~102. The carr_soln != s_log_carr guard already triggers instantly on any RTK state change, so bumping to 10s won't miss transitions.
+
+  Base display — the BCAST screen shows almost nothing useful. Lines 2-5 are blanked out. frames, arpcnt, and errors are all available via base_app_get_rtcm_stats() but never
+  displayed. The single most important question during a test — "are RTCM frames actually being sent over LoRa?" — has no answer on screen.
+
+  Rover display — lines 4-5 show IMU heading and pitch, which are irrelevant during a static RTK test. The three critical correction-flow indicators are invisible: arp_seen (has the
+  rover received the base's 1005 reference position?), diff_age_s (is the GNSS module processing fresh corrections?), and LoRa RX bytes (is the link delivering anything at all?). All
+  three are already available; they just aren't shown.
+
+  Proposed new layouts — I'll show you the screen before touching code:
+
+  ROVER live (current vs new lines 4-5):
+    [4] HDG:123.4  Cal:3/3     →  ARP:Y Age: 3.2s  45kB
+    [5] PDOP:1.2  P:-1.5       →  PDOP:1.2  vAcc:0.023m
+
+  BASE live (current BCAST vs new):
+    [0] BASE: BROADCAST        →  BASE: BROADCASTING
+    [1] RTCM streaming         →  T: 348s  Acc:  1.87m  (converged at)
+    [2] (blank)                →  ARP:YES               (or waiting...)
+    [3] (blank)                →  RTCM:  1291  Err:   0
+    [4] (blank)                →  1005:  1065 ARP:YES
+    [5] (blank)                →  (blank)
+    [6] UPS                    →  UPS (unchanged)
+    [7] mode/menu              →  mode/menu (unchanged)
+
+  IMU heading moves to the "Fix detail" menu screen — it's still accessible, just not the primary view.
+
+------------------------------------------
+
+● Let me look at the display/UI code and the CSV logging to understand the current state before suggesting anything.
+
+  Searched for 2 patterns, read 5 files (ctrl+o to expand)
+
+● Now I have a complete picture. Let me assess before touching anything:
+
+  Rover CSV (yes, logging too often): The comment on line 341 says "every 10 s" but the condition on line 345 is >= 1 — every 1 second. A 17-minute test produces ~1020 rows instead of
+  ~102. The carr_soln != s_log_carr guard already triggers instantly on any RTK state change, so bumping to 10s won't miss transitions.
+
+  Base display — the BCAST screen shows almost nothing useful. Lines 2-5 are blanked out. frames, arpcnt, and errors are all available via base_app_get_rtcm_stats() but never
+  displayed. The single most important question during a test — "are RTCM frames actually being sent over LoRa?" — has no answer on screen.
+
+  Rover display — lines 4-5 show IMU heading and pitch, which are irrelevant during a static RTK test. The three critical correction-flow indicators are invisible: arp_seen (has the
+  rover received the base's 1005 reference position?), diff_age_s (is the GNSS module processing fresh corrections?), and LoRa RX bytes (is the link delivering anything at all?). All
+  three are already available; they just aren't shown.
+
+  Proposed new layouts — I'll show you the screen before touching code:
+
+  ROVER live (current vs new lines 4-5):
+    [4] HDG:123.4  Cal:3/3     →  ARP:Y Age: 3.2s  45kB
+    [5] PDOP:1.2  P:-1.5       →  PDOP:1.2  vAcc:0.023m
+
+  BASE live (current BCAST vs new):
+    [0] BASE: BROADCAST        →  BASE: BROADCASTING
+    [1] RTCM streaming         →  T: 348s  Acc:  1.87m  (converged at)
+    [2] (blank)                →  ARP:YES               (or waiting...)
+    [3] (blank)                →  RTCM:  1291  Err:   0
+    [4] (blank)                →  1005:  1065 ARP:YES
+    [5] (blank)                →  (blank)
+    [6] UPS                    →  UPS (unchanged)
+    [7] mode/menu              →  mode/menu (unchanged)
+
+  IMU heading moves to the "Fix detail" menu screen — it's still accessible, just not the primary view.
+
+● User answered Claude's questions:
+  ⎿  · For the Fix Detail screen, should I keep showing IMU heading/cal/pitch there (so it's still accessible via menu), or drop it entirely? → Drop IMU entirely
+
+● Good. IMU only lives in render_rover_live right now anyway. I'll strip it from the whole UI path. That also cleans up the ui_tick and ui_init signatures.
+
+  Changes across three files: ui.h (signature), ui.c (renderers), main.cpp (call sites + CSV interval).
+
+  ---
+  components/ui/ui.c + ui.h
+  
+  Rover live screen — lines 4 and 5 replaced:
+  ARP:Y Age: 3.2s  45kB    ← ARP received, correction age, LoRa RX (kB)
+  PDOP:1.2  vAcc:0.023m    ← dilution of precision + vertical accuracy
+  diff_age_s = -- when the GNSS module isn't receiving corrections; jumps to a real value the moment they start arriving. ARP:N at start → ARP:Y once the rover gets the 1005 base
+  reference. LoRa kB accumulates visibly throughout the test.
+  
+  Base live screen — BCAST mode no longer shows three blank lines. Lines 3-4 now show the full RTCM health picture:
+  RTCM:  1291  Err:   0
+  1005:  1065 ARP:YES
+  Line 2 during BCAST shows ARP:YES / ARP:waiting.... Lines 1-2 still show the survey-in snapshot (converged duration/accuracy) so you can see what quality the base converged at.
+
+  Signatures cleaned up: imu_data_t removed from ui_tick and ui_init; lora_rx_b added to ui_tick.
+
+  ---
+  main/main.cpp
+
+  - ui_init(mode) — imu_ok param dropped
+  - ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes) — passes cumulative correction bytes
+  - Rover CSV interval: >= 1 → >= 10. RTK state transitions still log instantly via the carr_soln != s_log_carr trigger; the routine health rows drop from ~1/s to ~1/10s (~100 rows
+  for a 17-min test vs ~1000).
+
+
+----------------------------------------------------------
+ Can you give me a comprehensive view of what each device (base/rover) does from startup to rover float as depicted by the monitor outputs.
+
+ Rover:
+I (1216) lora: E22 configured: 21 dBm ch52 (902.125 MHz)
+I (1316) lora: E22 regs: addr=0000 net=00 reg3=64 reg4=03 chan=52 reg6=00 crypt=0000
+I (1366) lora: LoRa ready
+I (1366) uart: ALREADY NULL
+I (1366) gnss: trying 460800 baud on TX=6 RX=1
+I (1456) gnss: LC29H (NMEA) detected at 460800 baud: $GNGGA,120637.009,,,,,0,00,99.99,,M,,M,,*40
+I (1516) gnss: $PQTMVERNO,LC29HEANR11A04S_RSA,2025/04/02,15:51:16*2D
+I (1616) gnss: $PAIR001,002,0*39
+I (1716) gnss: $PQTMCFGRTK,OK,1,1*3F
+I (1816) gnss: $PQTMCFGRCVRMODE,OK*64
+I (2016) gnss: $PQTMCFGRCVRMODE,OK,1*79
+I (2116) gnss: $PQTMCFGRTK,OK*3F
+I (2316) gnss: $PQTMSAVEPAR,OK*72
+I (2816) gnss: LC29H ready TX=6 RX=1 — RTK rover mode requested
+I (2816) app: Rover using LoRa corrections from local base
+I (2816) gnss: $PQTMCFGRTK,OK,1,1*3F
+I (3016) gnss: RTCM type 1074 (first seen, 1 types total)
+I (3016) gnss: RTCM MSM  station ID: 3335 (from type 1074)
+I (3016) gnss: RTCM type 1084 (first seen, 2 types total)
+I (3016) gnss: RTCM type 1094 (first seen, 3 types total)
+I (3026) gnss: RTCM type 1124 (first seen, 4 types total)
+I (3026) gnss: RTCM type 1114 (first seen, 5 types total)
+I (10396) gnss: RTCM → LC29H: 2404 B total
+I (17536) gnss: $PAIR010,0,0,2422,562031*3E
+I (17536) gnss: $PAIR010,0,1,2422,562031*3F
+I (17536) gnss: $PAIR010,0,3,2422,562031*3D
+I (17536) gnss: $PAIR010,0,2,2422,562031*3C
+I (20396) gnss: RTCM → LC29H: 5224 B total
+I (26526) gnss: $PAIR010,0,0,2422,562160*3B
+I (26536) gnss: $PAIR010,0,1,2422,562160*3A
+I (26536) gnss: $PAIR010,0,3,2422,562160*38
+I (26536) gnss: $PAIR010,0,2,2422,562160*39
+I (30266) app: pos sv=0 fix=0 rtk=0 lat=0.000000 lon=0.000000 hAcc=0.00m pdop=100.0
+I (30526) gnss: RTCM → LC29H: 8131 B total
+I (33576) gnss: GGA: quality=1 station=0 diff_age=0.0s sv=6
+I (40576) gnss: RTCM → LC29H: 11261 B total
+I (50596) gnss: RTCM → LC29H: 14569 B total
+I (60256) app: pos sv=12 fix=3 rtk=0 lat=40.979007 lon=-90.369048 hAcc=2.73m pdop=1.4
+I (61556) gnss: RTCM → LC29H: 18116 B total
+I (71556) gnss: RTCM → LC29H: 21326 B total
+I (81556) gnss: RTCM → LC29H: 24536 B total
+I (86526) gnss: $PAIR010,0,0,2422,562220*3C
+I (86536) gnss: $PAIR010,0,1,2422,562220*3D
+I (86536) gnss: $PAIR010,0,3,2422,562220*3F
+I (86536) gnss: $PAIR010,0,2,2422,562220*3E
+I (90276) app: pos sv=12 fix=3 rtk=0 lat=40.979007 lon=-90.369050 hAcc=2.73m pdop=1.4
+I (91566) gnss: RTCM → LC29H: 27778 B total
+I (101566) gnss: RTCM → LC29H: 31110 B total
+I (111566) gnss: RTCM → LC29H: 34460 B total
+I (120266) app: pos sv=16 fix=3 rtk=0 lat=40.979008 lon=-90.369051 hAcc=2.10m pdop=1.2
+I (121596) gnss: RTCM → LC29H: 37842 B total
+I (131616) gnss: RTCM → LC29H: 40960 B total
+I (141616) gnss: RTCM → LC29H: 44762 B total
+I (146546) gnss: $PAIR010,0,1,2422,562160*3A
+I (146546) gnss: $PAIR010,0,0,2422,562280*36
+I (146546) gnss: $PAIR010,0,3,2422,562280*35
+I (146546) gnss: $PAIR010,0,2,2422,562280*34
+I (150286) app: pos sv=16 fix=3 rtk=0 lat=40.979007 lon=-90.369052 hAcc=2.04m pdop=1.2
+I (151646) gnss: RTCM → LC29H: 48288 B total
+I (162606) gnss: RTCM → LC29H: 52346 B total
+I (172616) gnss: RTCM → LC29H: 56110 B total
+I (180306) app: pos sv=18 fix=3 rtk=0 lat=40.979007 lon=-90.369052 hAcc=2.16m pdop=1.2
+I (182616) gnss: RTCM → LC29H: 59916 B total
+I (192616) gnss: RTCM → LC29H: 63722 B total
+I (202616) gnss: RTCM → LC29H: 67552 B total
+I (206526) gnss: $PAIR010,0,1,2422,562220*3D
+I (206536) gnss: $PAIR010,0,0,2422,562340*3B
+I (206536) gnss: $PAIR010,0,3,2422,562340*38
+I (206536) gnss: $PAIR010,0,2,2422,562340*39
+I (210336) app: pos sv=20 fix=3 rtk=0 lat=40.979007 lon=-90.369052 hAcc=2.40m pdop=1.5
+I (212676) gnss: RTCM → LC29H: 71588 B total
+I (222676) gnss: RTCM → LC29H: 75702 B total
+I (232676) gnss: RTCM → LC29H: 79810 B total
+I (233696) gnss: GGA: quality=2 station=0 diff_age=0.0s sv=20
+I (240376) app: pos sv=20 fix=3 rtk=0 lat=40.979008 lon=-90.369050 hAcc=2.13m pdop=1.1
+I (242676) gnss: RTCM → LC29H: 83900 B total
+I (252696) gnss: RTCM → LC29H: 88026 B total
+I (262696) gnss: RTCM → LC29H: 92176 B total
+I (266526) gnss: $PAIR010,0,1,2422,562280*37
+I (266536) gnss: $PAIR010,0,0,2422,562400*38
+I (266536) gnss: $PAIR010,0,3,2422,562400*3B
+I (266536) gnss: $PAIR010,0,2,2422,562400*3A
+I (270416) app: pos sv=21 fix=3 rtk=0 lat=40.979010 lon=-90.369048 hAcc=2.13m pdop=1.2
+I (272696) gnss: RTCM → LC29H: 96326 B total
+I (283676) gnss: RTCM → LC29H: 100819 B total
+I (294646) gnss: RTCM → LC29H: 105224 B total
+I (300266) app: pos sv=22 fix=3 rtk=0 lat=40.979012 lon=-90.369046 hAcc=1.92m pdop=1.1
+I (304666) gnss: RTCM → LC29H: 109216 B total
+I (314696) gnss: RTCM → LC29H: 113324 B total
+I (315746) gnss: RTCM type 1005 (first seen, 6 types total)
+I (315746) gnss: RTCM ARP  station ID: 3335 (type 1005)
+I (320416) gnss: GGA: quality=5 station=3335 diff_age=1.9s sv=26
+I (320716) app: RTK FLOAT  sv=26 hAcc=1.680m
+I (324736) gnss: RTCM → LC29H: 117706 B total
+I (326526) gnss: $PAIR010,0,1,2422,562340*3A
+I (326536) gnss: $PAIR010,0,2,2422,562460*3C
+I (330316) app: pos sv=26 fix=3 rtk=1 lat=40.978978 lon=-90.369049 hAcc=1.86m pdop=1.0
+I (334766) gnss: RTCM → LC29H: 122154 B total
+I (344786) gnss: RTCM → LC29H: 126740 B total
+I (354796) gnss: RTCM → LC29H: 131072 B total
+I (360366) app: pos sv=26 fix=3 rtk=1 lat=40.978971 lon=-90.369039 hAcc=1.65m pdop=1.0
+I (364796) gnss: RTCM → LC29H: 136157 B total
+I (374796) gnss: RTCM → LC29H: 140897 B total
+I (384796) gnss: RTCM → LC29H: 145647 B total
+I (386526) gnss: $PAIR010,0,1,2422,562400*39
+I (390406) app: pos sv=26 fix=3 rtk=1 lat=40.978980 lon=-90.369046 hAcc=1.47m pdop=0.8
+
+Base:
+I (1176) gpio: GPIO[21]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1486) lora: E22 configured: 21 dBm ch52 (902.125 MHz)
+I (1586) lora: E22 regs: addr=0000 net=00 reg3=64 reg4=03 chan=52 reg6=00 crypt=0000
+I (1636) lora: LoRa ready
+I (1636) uart: ALREADY NULL
+I (1636) gnss: trying 460800 baud on TX=6 RX=1
+I (1986) gnss: LC29H (RTCM/base mode) detected at 460800 baud
+I (2036) gnss: LC29H ready TX=6 RX=1 — preserving saved base mode
+I (2236) gnss: Booted in base mode — applying SVIN config in-place
+I (2236) base: Base task started (min=300s acc=2.0m transport=LoRa)
+I (2236) gnss: $PAIR001,432,0*3E
+I (2436) gnss: $PAIR001,430,0*3C
+I (2636) gnss: $PAIR001,434,0*38
+I (2836) gnss: $PAIR001,436,0*3A
+I (3036) gnss: $PQTMCFGSVIN,OK*70
+I (3236) gnss: $PQTMSAVEPAR,OK*72
+I (3736) gnss: Requesting LC29H software reset (PQTMSRR)…
+I (3736) gnss: $PQTMSRR,ERROR,3*20
+I (8736) gnss: LC29H base init done — survey-in min=300s acc=2.0m
+I (8736) base: Base configured — starting RTCM broadcast immediately
+I (8736) base: Flushed 32 stale RTCM frames before broadcast
+I (8986) base: Outbound RTCM type 1074: 88 B station=3335 (total types: 1)
+I (8986) base: Outbound RTCM type 1084: 28 B station=3335 (total types: 2)
+I (8986) base: Outbound RTCM type 1094: 28 B station=3335 (total types: 3)
+I (8996) base: Outbound RTCM type 1124: 28 B station=3335 (total types: 4)
+I (9006) base: Outbound RTCM type 1114: 28 B station=3335 (total types: 5)
+I (12986) gnss: $PAIR010,0,0,2422,562007*3B
+I (12986) gnss: $PAIR010,0,1,2422,562007*3A
+I (12986) gnss: $PAIR010,0,3,2422,562007*38
+I (12996) gnss: $PAIR010,0,2,2422,562007*39
+I (17886) gnss: $PAIR010,0,0,2422,562131*3F
+I (17896) gnss: $PAIR010,0,1,2422,562131*3E
+I (17896) gnss: $PAIR010,0,3,2422,562131*3C
+I (17896) gnss: $PAIR010,0,2,2422,562131*3D
+I (18896) base: RTCM broadcast: 50 frames 2063 B 0 errors  arb=NO
+I (28896) base: RTCM broadcast: 100 frames 4699 B 0 errors  arb=NO
+I (38896) base: RTCM broadcast: 150 frames 7519 B 0 errors  arb=NO
+I (48896) base: RTCM broadcast: 200 frames 10426 B 0 errors  arb=NO
+I (58896) base: RTCM broadcast: 250 frames 13556 B 0 errors  arb=NO
+I (69126) base: RTCM broadcast: 303 frames 17079 B 0 errors  arb=NO
+I (76886) gnss: $PAIR010,0,0,2422,562191*35
+I (76896) gnss: $PAIR010,0,1,2422,562191*34
+I (76896) gnss: $PAIR010,0,3,2422,562191*36
+I (76896) gnss: $PAIR010,0,2,2422,562191*37
+I (79896) base: RTCM broadcast: 355 frames 20411 B 0 errors  arb=NO
+I (90116) base: RTCM broadcast: 408 frames 23828 B 0 errors  arb=NO
+I (100116) base: RTCM broadcast: 458 frames 27038 B 0 errors  arb=NO
+I (110116) base: RTCM broadcast: 508 frames 30280 B 0 errors  arb=NO
+I (120906) base: RTCM broadcast: 560 frames 33740 B 0 errors  arb=NO
+I (131116) base: RTCM broadcast: 613 frames 37297 B 0 errors  arb=NO
+I (136886) gnss: $PAIR010,0,0,2422,562251*3A
+I (136896) gnss: $PAIR010,0,3,2422,562251*39
+I (136896) gnss: $PAIR010,0,2,2422,562251*38
+I (141126) base: RTCM broadcast: 663 frames 40695 B 0 errors  arb=NO
+I (151136) base: RTCM broadcast: 713 frames 44137 B 0 errors  arb=NO
+I (161896) base: RTCM broadcast: 765 frames 47755 B 0 errors  arb=NO
+I (171906) base: RTCM broadcast: 815 frames 51299 B 0 errors  arb=NO
+I (181906) base: RTCM broadcast: 865 frames 55015 B 0 errors  arb=NO
+I (192096) base: RTCM broadcast: 917 frames 58972 B 0 errors  arb=NO
+I (196886) gnss: $PAIR010,0,1,2422,562191*34
+I (196896) gnss: $PAIR010,0,0,2422,562311*3F
+I (196896) gnss: $PAIR010,0,3,2422,562311*3C
+I (196896) gnss: $PAIR010,0,2,2422,562311*3D
+I (202096) base: RTCM broadcast: 967 frames 62778 B 0 errors  arb=NO
+I (212896) base: RTCM broadcast: 1020 frames 66783 B 0 errors  arb=NO
+I (222906) base: RTCM broadcast: 1070 frames 70631 B 0 errors  arb=NO
+I (232906) base: RTCM broadcast: 1120 frames 74701 B 0 errors  arb=NO
+I (243106) base: RTCM broadcast: 1172 frames 79016 B 0 errors  arb=NO
+I (253116) base: RTCM broadcast: 1222 frames 83124 B 0 errors  arb=NO
+I (256896) gnss: $PAIR010,0,1,2422,562251*3B
+I (256896) gnss: $PAIR010,0,3,2422,562371*3A
+I (256896) gnss: $PAIR010,0,2,2422,562371*3B
+I (263116) base: RTCM broadcast: 1272 frames 87214 B 0 errors  arb=NO
+I (273906) base: RTCM broadcast: 1325 frames 91566 B 0 errors  arb=NO
+I (284116) base: RTCM broadcast: 1377 frames 95917 B 0 errors  arb=NO
+I (294906) base: RTCM broadcast: 1430 frames 100265 B 0 errors  arb=NO
+I (304906) base: RTCM broadcast: 1480 frames 104335 B 0 errors  arb=NO
+I (314896) base: RTCM broadcast: 1530 frames 108315 B 0 errors  arb=NO
+I (316896) gnss: $PAIR010,0,1,2422,562311*3E
+I (316896) gnss: $PAIR010,0,3,2422,562431*39
+I (316896) gnss: $PAIR010,0,2,2422,562431*38
+I (324906) base: RTCM broadcast: 1580 frames 112323 B 0 errors  arb=NO
+I (333116) base: Outbound RTCM type 1005: 25 B station=3335 (total types: 6)
+I (333116) base: Survey-in converged — RTCM 1005 in stream
+I (334906) base: RTCM broadcast: 1632 frames 116505 B 0 errors  arb=YES
+I (344906) base: RTCM broadcast: 1692 frames 120875 B 0 errors  arb=YES
+I (354906) base: RTCM broadcast: 1752 frames 125363 B 0 errors  arb=YES
+I (364906) base: RTCM broadcast: 1812 frames 129965 B 0 errors  arb=YES
+I (375126) base: RTCM broadcast: 1874 frames 134878 B 0 errors  arb=YES
+I (376896) gnss: $PAIR010,0,1,2422,562371*38
+I (376896) gnss: $PAIR010,0,2,2422,562491*32
+I (385126) base: RTCM broadcast: 1934 frames 139618 B 0 errors  arb=YES
+I (395906) base: RTCM broadcast: 1998 frames 144608 B 0 errors  arb=YES
+I (405906) base: RTCM broadcast: 2058 frames 149400 B 0 errors  arb=YES
+
+  ---
+  Boot-to-Float: Combined Timeline
+  
+  Absolute time alignment
+
+  The device timestamps are each relative to their own boot. The PAIR010 counter (a GPS-time-referenced epoch tick, 1 count/second) appears at:
+  - Base t=12.99s → counter 562007
+  - Rover t=17.54s → counter 562031 (Δ24 counts)
+
+  The rover PAIR010 fires 24 GPS seconds after the base's first PAIR010. Combined with the 4.5s difference in wall-clock timestamps, the base booted ~19 seconds before the rover. All
+  absolute times below assume that offset.
+
+  ---
+  Phase 1 — Peripheral init (both, 0–1.6s)
+
+  Both devices run the same startup code:
+
+  LoRa first. E22 comes up in ~1.5s: CONFIG mode, C2 RAM write (9600 baud UART, 21dBm, ch52 = 902.125 MHz, transparent mode), C1 readback to verify registers, then NORMAL mode. Both
+  devices show identical reg3=64 reg4=03 chan=52 reg6=00 crypt=0000 — the config took cleanly on this cold start (this is the bug fixed in the last session; previously the AUX timeout
+  was too short).
+
+  Then GNSS. The UART is opened at 460800 baud. The LC29H announces its character within 200ms on the rover (it spits an NMEA sentence) but takes ~350ms on the base (it's already
+  outputting RTCM binary so the detector waits for a framing pattern).
+
+  ---
+  Phase 2 — LC29H mode detection and config (0–2.8s rover / 0–8.7s base)
+  
+  The two devices diverge here because they're in different GNSS modes on this boot:
+
+  Rover (want_rover=true, LC29H was already in NMEA/rover mode):
+  LC29H (NMEA) detected → $GNGGA shows fix_type=0, sv=0  (cold, no sky acquired yet)
+  $PQTMVERNO → firmware LC29HEANR11A04S_RSA 2025-04-02
+  $PAIR001,002,0   ← ACK for PAIR002 (GNSS constellation enable)
+  $PQTMCFGRTK,OK,1,1  ← RTK engine active, L1+L5 enabled
+  $PQTMCFGRCVRMODE,OK,1  ← confirmed rover mode (1)
+  $PQTMSAVEPAR,OK
+  → "LC29H ready — RTK rover mode requested"  t=2.8s
+  No reset needed — module was already in the right mode and just needed RTK confirmed.
+
+  Base (want_rover=false, LC29H was already outputting RTCM at boot):
+  LC29H (RTCM/base mode) detected → "preserving saved base mode"
+  "Booted in base mode — applying SVIN config in-place"
+  $PAIR001,432,0  ← ACK: disable MSM7 (already off, no-op)
+  $PAIR001,430,0  ← ACK: enable MSM4
+  $PAIR001,434,0  ← ACK: enable 1005 ARP output
+  $PAIR001,436,0  ← ACK: disable ephemeris broadcast
+  $PQTMCFGSVIN,OK  ← survey-in config accepted (min=300s, acc=200cm)
+  $PQTMSAVEPAR,OK
+  $PQTMSRR → ERROR,3  ← software reset REJECTED
+  The PQTMSRR ERROR,3 means the LC29H refused the soft reset — likely because it was mid-RTCM-output and the command isn't valid in that state. The code waits 5 seconds as a fallback,
+  which is enough for any internal reconfiguration to settle.
+  
+  Base task starts at t=2.2s. RTCM broadcast begins at t=8.7s after that 5-second wait, flushing 32 stale frames that had accumulated in the ring buffer during init.
+
+  ---
+  Phase 3 — LoRa RTCM link established (rover t≈3s)
+  
+  The rover's first log entry after "LoRa corrections from local base" is already RTCM frames arriving — at rover t=3.0s. The base had been broadcasting for ~14 seconds by then (it
+  started at base t=8.7s, the base booted ~19s earlier, so absolute start was absolute_t=base_boot+8.7). The rover connects directly into a live RTCM stream.
+
+  Five MSM4 types land immediately:
+  1074 — GPS MSM4        88 B  station=3335
+  1084 — GLONASS MSM4    28 B  station=3335
+  1094 — Galileo MSM4    28 B  station=3335
+  1124 — BeiDou MSM4     28 B  station=3335
+  1114 — QZSS MSM4       28 B  station=3335
+  The base is sending all five constellations, all tagged with station ID 3335. This number must match the 1005 ARP when it eventually arrives, or the LC29H will reject the pairing.
+  It does match — confirmed at t=315.7s.
+
+  ---
+  Phase 4 — Standalone acquisition with live corrections (rover t=3s–233s)
+  
+  The rover is receiving RTCM corrections from second 3, but the LC29H can't do RTK yet because it has no base position (the 1005 ARP is still absent — the base survey-in hasn't
+  converged). In the meantime:
+
+  ┌────────────┬────────────────────────────────────────────────────────┐
+  │ rover time │                         event                          │
+  ├────────────┼────────────────────────────────────────────────────────┤
+  │ t=3s       │ RTCM flowing, 5 MSM4 types                             │
+  ├────────────┼────────────────────────────────────────────────────────┤
+  │ t=30s      │ Still no fix: sv=0, all zeros                          │
+  ├────────────┼────────────────────────────────────────────────────────┤
+  │ t=33.6s    │ First GNSS fix — GGA quality=1 (standalone), 6 SVs     │
+  ├────────────┼────────────────────────────────────────────────────────┤
+  │ t=60s      │ 12 SVs, hAcc=2.73m, stable 3D fix                      │
+  ├────────────┼────────────────────────────────────────────────────────┤
+  │ t=120s     │ 16 SVs, hAcc=2.10m                                     │
+  ├────────────┼────────────────────────────────────────────────────────┤
+  │ t=233s     │ GGA quality=2 (DGPS), station=0, diff_age=0.0s, 20 SVs │
+  └────────────┴────────────────────────────────────────────────────────┘
+
+  The quality=2 DGPS at t=233s is significant: the LC29H is applying the MSM4 pseudorange corrections to improve code-level positioning even without knowing where the base is. MSM4
+  carries signal-level range measurements — the rover can compute differential pseudorange corrections from those without a baseline solution. Station=0 confirms this isn't RTK (RTK
+  would show station=3335), and diff_age=0.0 indicates it's not treating these as classical DGPS age-tracked corrections, but computing them on the fly. The position has improved to
+  sub-2m equivalent accuracy.
+
+  The steady increase from 6→12→16→18→20→21→22 SVs is normal cold-start acquisition as the almanac builds up. The LC29H is dual-band (L1+L5), which explains reaching 26 SVs at float —
+  L5 adds Galileo E5a, BeiDou B2a, GPS L5, and QZSS L5.
+
+  ---
+  Phase 5 — Survey-in converges on base (base t≈333s = rover t≈315s)
+  
+  On the base, survey-in ran silently for ~324 seconds after broadcast started. The RTCM health log shows zero errors and steady frame counts throughout:
+  t=8.7s:   broadcast starts — 32 stale frames flushed
+  t=18.9s:   50 frames, 2063 B, arb=NO
+  t=28.9s:  100 frames, 4699 B
+  ...
+  t=313.1s: 1530 frames, 108315 B, arb=NO  ← 1005 still not appearing
+  t=333.1s: 1005 ARP SENT — station=3335, 25 B
+            "Survey-in converged — RTCM 1005 in stream"
+  t=334.9s: 1632 frames, arb=YES
+
+  The 1005 message (RTCM Reference Station ARP) carries the base's precisely converged ECEF position — the thing the rover has been waiting for the whole time. It's 25 bytes and shows
+  up roughly once per second from now on, in every RTCM epoch.
+
+  The base log never shows $PQTM,PQTMSVINSTATUS responses despite the 10-second polling (which is active from t=8.7s onward). Either those responses were omitted from the excerpt you
+  pasted, or the LC29H doesn't respond to $PQTMSVINSTATUS,R in this firmware version while actively surveying in — our fix will confirm which on the next test.
+
+  ---
+  Phase 6 — 1005 arrives at rover → RTK Float (rover t=315.7s–320.4s)
+
+  t=315.7s  RTCM type 1005 (first seen, 6 types total)
+            RTCM ARP station ID: 3335  ← matches MSM station, accepted
+  t=320.4s  GGA: quality=5 (RTK Float), station=3335, diff_age=1.9s, sv=26
+  t=320.7s  RTK FLOAT — sv=26, hAcc=1.680m
+
+  Float appeared 4.7 seconds after the first 1005. The LC29H had 315 seconds of MSM4 measurements buffered and was ready to compute the carrier-phase baseline solution the instant it
+  knew where the base was. The jump is clean — no intermediate DGPS state, straight from 3D to Float.
+
+  Subsequent hAcc readings show normal float convergence:
+  t=330s  rtk=1  hAcc=1.86m
+  t=360s  rtk=1  hAcc=1.65m
+  t=390s  rtk=1  hAcc=1.47m  (improving, heading toward Fixed)
+
+  ---
+  Phase 7 — PAIR010 messages (background, both devices)
+  
+  These appear every 60 seconds on both devices for four entries each:
+  $PAIR010,0,<constellation_idx>,2422,<counter>
+    idx 0 = GPS
+    idx 1 = GLONASS
+    idx 2 = BeiDou
+    idx 3 = Galileo
+  The counter increments by exactly 60 each firing, tracking real GPS seconds. The value is shared across both devices — both show 562xxx, tightly coupled to GPS time. The field 2422
+  is a fixed satellite pool size parameter. These are LC29H internal health/epoch sync reports, not relevant to RTK state but useful for confirming the module's time reference is
+  solid.
+
+  ---
+  Summary of what worked / what to watch next
+
+  ┌────────────────────────┬──────────────────────────────────────────────────────────────────────┐
+  │         Aspect         │                                Result                                │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ LoRa link              │ 0 errors in 2058 RTCM frames over 405 seconds — rock solid           │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ Station ID consistency │ Base and rover both see 3335 for all message types                   │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ MSM4 selection         │ All 5 constellations broadcasting efficiently (28–88 B/frame)        │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ DGPS pre-ARP           │ LC29H using MSM4 code corrections before having base position        │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ 1005 delivery          │ Arrived at rover within one LoRa epoch of base convergence           │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ Float onset            │ 4.7 seconds after first 1005 — near-instant                          │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ Survey-in display      │ Svin values will now be visible on screen after today's parser fix   │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ PQTMSRR failure        │ Non-fatal; base config persists across the reset-less 5s wait        │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+  │ No RTK Fix yet         │ ~70 seconds of Float shown — likely would have Fixed given more time │
+  └────────────────────────┴──────────────────────────────────────────────────────────────────────┘
+
+  The main gap is time: Float appeared at t=320s and the log ends at t=390s with hAcc still improving. With 26 SVs and L1/L5, Fixed should have followed within another few minutes.
+
+
+-------------------------------------------------
+please give more details on the E22 regs line: E22 regs: addr=0000 net=00 reg3=64 reg4=03 chan=52 reg6=00 crypt=0000
+
+  
+● The log line comes from the C1 readback in e22_configure() — after the C2 write programs the module, the code immediately reads back all nine registers (addresses 0x00–0x08) to
+  confirm they stuck. Here's every field:
+
+  ---
+  addr=0000 — ADDH/ADDL (addresses 0x00, 0x01)
+  
+  The module's own 16-bit address, stored as two bytes: high byte 00, low byte 00 → address 0x0000.
+
+  This is the factory default and it doesn't matter in this configuration. The E22 has two transmission modes:
+
+  - Transparent mode (what we use): every module on the same channel hears every transmission. The ADDH/ADDL registers are completely ignored for routing — the module is a dumb pipe.
+  - Fixed-point mode: the sender prefixes each packet with the destination's ADDH+ADDL+CH bytes, and the E22 handles addressing in hardware.
+
+  Since REG6 selects transparent mode (see below), addr=0000 is a don't-care. Both base and rover could have any address and still communicate.
+
+  ---
+  net=00 — NETID (address 0x02)
+
+  A secondary grouping byte. All modules that should hear each other must share the same NETID. 0x00 is the factory default. Since both devices come out of the box at net=00, they're
+  on the same network without any configuration needed. You'd change this if you had multiple independent LoRa pairs operating on the same channel in the same area and needed to
+  prevent cross-talk.
+
+  ---
+  reg3=64 — UART baud rate, parity, air data rate (address 0x03)
+  
+  0x64 = 0b 0110 0100, split into three fields:
+
+  ┌──────┬───────┬──────────────────────────┐
+  │ bits │ value │         meaning          │
+  ├──────┼───────┼──────────────────────────┤
+  │ 7:5  │ 011   │ UART = 9600 baud         │
+  ├──────┼───────┼──────────────────────────┤
+  │ 4:3  │ 00    │ 8N1 (no parity)          │
+  ├──────┼───────┼──────────────────────────┤
+  │ 2:0  │ 100   │ Air data rate = 9.6 kbps │
+  └──────┴───────┴──────────────────────────┘
+
+  The UART baud rate (9600) is the speed between the ESP32 and the E22 module on the physical UART pins. The air data rate (9.6 kbps) is the over-the-air LoRa symbol rate — a separate
+  setting. These happen to be the same number here but are completely independent.
+
+  At 9.6 kbps air rate the E22 uses a relatively fast LoRa spreading factor and bandwidth, trading range for throughput. This is the right balance for RTCM: you need to move ~500–600
+  bytes per GNSS epoch (1 Hz), and 9.6 kbps gives you comfortable headroom for bursts of MSM4 frames.
+
+  ---
+  reg4=03 — Sub-packet size and TX power (address 0x04)
+  
+  0x03 = 0b 0000 0011, two relevant fields:
+
+  ┌──────┬───────┬─────────────────────────────┐
+  │ bits │ value │           meaning           │
+  ├──────┼───────┼─────────────────────────────┤
+  │ 7:6  │ 00    │ Sub-packet size = 240 bytes │
+
+  0x03 = 0b 0000 0011, two relevant fields:
+
+  ┌──────┬───────┬─────────────────────────────┐
+  │ bits │ value │           meaning           │
+  ├──────┼───────┼─────────────────────────────┤
+
+  ---
+  reg4=03 — Sub-packet size and TX power (address 0x04)
+
+  0x03 = 0b 0000 0011, two relevant fields:
+
+  ┌──────┬───────┬─────────────────────────────┐
+  │ bits │ value │           meaning           │
+  ├──────┼───────┼─────────────────────────────┤
+  │ 7:6  │ 00    │ Sub-packet size = 240 bytes │
+  ├──────┼───────┼─────────────────────────────┤
+  │ 1:0  │ 11    │ TX power register = 3       │
+  └──────┴───────┴─────────────────────────────┘
+
+  Sub-packet size (240 bytes): When a message longer than the sub-packet size arrives at the E22 UART, the module automatically splits it and sends it in chunks. 240 bytes is the
+  maximum (and what we want) — it minimises the number of LoRa air frames needed per RTCM epoch, keeping latency low. Smaller sub-packets would mean more preamble overhead and higher
+  AUX-busy time.
+
+  TX power: The register value 0b11 maps to the lowest power step on the E22-900T22S. The code computes the register using the formula (30 − dbm) / 3, which was written for the T30S
+  (30 dBm) variant. For the T22S (22 dBm max) the actual power table is:
+
+  ┌──────────┬───────────────┐
+  │ reg bits │ actual output │
+  ├──────────┼───────────────┤
+  │ 00       │ 22 dBm        │
+  ├──────────┼───────────────┤
+  │ 01       │ 17 dBm        │
+  ├──────────┼───────────────┤
+  │ 10       │ 13 dBm        │
+  ├──────────┼───────────────┤
+  │ 11       │ 10 dBm        │
+  └──────────┴───────────────┘
+
+  So the log says "21 dBm" because that's what power_reg(21) computed, but the hardware is actually outputting ~10 dBm. The LoRa link worked perfectly at 0 errors over 400 seconds,
+  so 10 dBm is more than adequate at field-test distances. The formula needs correcting if you ever need to control power precisely — for example if you were hitting the FCC Part 15
+  limit or trying to conserve battery by running at minimum usable power.
+
+  ---
+  chan=52 — Channel (address 0x05)
+
+  The frequency formula for the E22-900T22S is:
+
+  f = 850.125 + channel (MHz)
+  chan 52 → 850.125 + 52 = 902.125 MHz
+
+  This puts the link on 902.125 MHz, well inside the US 915 MHz ISM band (902–928 MHz). Channel is shown in decimal in the log (52) because that's most readable, but it's stored as a
+  raw byte 0x34. Both devices read back chan=52, confirming they're locked to the same frequency — essential for them to hear each other.
+
+  ---
+  reg6=00 — Transmission mode, RSSI byte, LBT (address 0x06)
+
+  0x00 = 0b 0000 0000. The three meaningful bits:
+
+  ┌─────┬───────┬───────────────────────────────────┐
+  │ bit │ value │              meaning              │
+  ├─────┼───────┼───────────────────────────────────┤
+  │ 7   │ 0     │ RSSI byte disabled                │
+  ├─────┼───────┼───────────────────────────────────┤
+  │ 6   │ 0     │ Transparent mode                  │
+  ├─────┼───────┼───────────────────────────────────┤
+  │ 5   │ 0     │ LBT (listen-before-talk) disabled │
+  └─────┴───────┴───────────────────────────────────┘
+
+  Bit 7 is the dangerous one. When set to 1, the E22 appends a one-byte RSSI value to the end of every received packet before writing it to the UART. That extra byte would land
+  inside every RTCM3 frame, corrupting the CRC-24Q check and causing the rover to discard every message. This is why the code explicitly checks rb[9] & 0x80 in the C1 readback and
+  logs a warning if it's set — the C2 write should have forced it to 0, but a silent config failure would leave it at whatever the factory default was.
+
+  Bit 6 selects transparent vs. fixed-point routing (see addr above). 0 = transparent, which is what makes both devices broadcast-receive without any address configuration.
+
+  ---
+  crypt=0000 — Encryption key (addresses 0x07–0x08)
+
+  A 16-bit AES-like hardware encryption key. 0x0000 = encryption disabled. When non-zero the E22 encrypts every byte before transmitting and decrypts on receive, transparently. Both
+  ends must have the same key or every frame is garbage.
+
+  0x0000 is the factory default and is fine here — RTCM corrections aren't sensitive data, and adding encryption would require synchronising keys on both devices without adding any
+  meaningful security benefit in a local field setup.
+
+  ---
+  Why the readback matters
+
+  The C1 readback happens after the C2 write, not before. If the C2 write silently failed (wrong ACK byte, garbled response, AUX timing issue), the C1 would show factory-default
+  values — most critically reg6=0x00 would still be fine but reg3 might differ, and chan might be wrong. Seeing reg3=64 chan=52 reg6=00 exactly matching what was written is the positive confirmation that the config write actually landed. That's why those three checks (channel mismatch, RSSI byte, fixed-point mode) are wired up as explicit warnings.
+
+------------  
+
+Can you review the log files from the latest outdoor test? There is a single Base file and three Rover files. The first the second rover file was created by  
+  a MCU reset and the third rover file was created by cycling the rover module board. 
+
+Here's my analysis of the four logs:
+
+  ---
+  BASE_002.CSV — 166 s, healthy
+
+  ┌──────────────────────────┬───────────────────────────────┐
+  │          Metric          │             Value             │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ Time in SVIN             │ ~11 s before jumping to BCAST │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ svin_valid at transition │ 0 (never set)                 │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ svin_acc_m / svin_dur_s  │ 0.00 / 0 throughout           │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ Total RTCM frames        │ 941 (~6 Hz)                   │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ MSG 1005 count           │ 157 (~1 Hz)                   │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ RTCM errors              │ 0                             │
+  ├──────────────────────────┼───────────────────────────────┤
+  │ UPS                      │ 12.27–12.28 V, ~90–91%        │
+  └──────────────────────────┴───────────────────────────────┘
+
+  Notable: The base went to BCAST in ~11 s with svin_valid=0 and zero accuracy. It was clearly not running a fresh survey-in — it jumped straight to broadcast
+  using a stored fixed position. If that's intentional (fixed-position mode), it's fine. If you expected a fresh survey-in, the transition condition has a bug.
+
+  ---
+  ROVER_002.CSV — ~42 s, MCU reset ended it
+  
+  - Came up already at RTK Fix (carr_soln=2) on the first row (t=2 s) — GNSS module retained state from a prior session.
+  - arp_seen=0 at t=2, then 1 at t=12 — first MSG 1005 arrived within 10 s of start.
+  - diff_age_s dropped from 11.9 → 2.0 s after ARP, confirming fresh corrections flowing.
+  - LoRa RX accumulating normally (157 → 23846 bytes over 40 s ≈ ~590 B/s).
+  - Position very stable: ~40.9791930–40.9791939, -90.3693952–55.
+
+  h_acc anomaly: Even at RTK Fix, h_acc_m is 1.290–1.320 m. True RTK Fix should be <0.1 m. Worth checking whether the CSV is logging the raw reported accuracy
+  or whether there's a field mapping issue in the GNSS driver.
+
+  ---
+  ROVER_003.CSV — 1 row, cut short by board cycle
+  
+  - Single row at t=3 s: RTK Fix, 35 SVs, arp_seen=1, diff_age_s=5.7.
+  - The module was still in Fix state from ROVER_002 when the MCU reset happened, and it was still in Fix when the board was immediately cycled.
+  - lora_rx_B=772 at the only row — that same value appears as the starting value in ROVER_004, confirming the MCU's LoRa byte counter survived the board cycle
+  (only the GNSS module board was power-cycled, not the MCU).
+
+  ---
+  ROVER_004.CSV — board cold-start, full re-acquisition
+  
+  ┌─────────┬──────────┬───────────┬───────┬─────────────┬────────────────────────────┐
+  │  Time   │ fix_type │ carr_soln │  SVs  │   h_acc_m   │            Note            │
+  ├─────────┼──────────┼───────────┼───────┼─────────────┼────────────────────────────┤
+  │ 3–33 s  │ 0        │ 0         │ 0     │ —           │ No fix, cold acquiring     │
+  ├─────────┼──────────┼───────────┼───────┼─────────────┼────────────────────────────┤
+  │ 35 s    │ 3        │ 1 (Float) │ 17    │ 2.760       │ First float fix            │
+  ├─────────┼──────────┼───────────┼───────┼─────────────┼────────────────────────────┤
+  │ 42 s    │ 3        │ 2 (Fix)   │ 18    │ 2.280       │ RTK Fix in ~7 s from Float │
+  ├─────────┼──────────┼───────────┼───────┼─────────────┼────────────────────────────┤
+  │ 52–72 s │ 3        │ 2         │ 19–24 │ 2.010–2.250 │ Converging                 │
+  └─────────┴──────────┴───────────┴───────┴─────────────┴────────────────────────────┘
+
+  - 32 s to first Float, then 7 s to RTK Fix — excellent cold-start reacquisition.
+  - arp_seen=1 from the very first row — persisted in MCU RAM across the GNSS board cycle, so no delay waiting for MSG 1005 again.
+  - First Float fix position (40.9792050, -90.3693878) was ~13 m off; after Fix it snapped to 40.9791929–33, -90.3693951–54, matching ROVER_002/003 within ~1 m.
+  - SV count climbs 17→18→19→24 as bands re-lock — still warming up at end of log.
+
+  ---
+  Summary
+
+  The LoRa link, base RTCM broadcast, and RTK re-acquisition all behaved well. Two things worth investigating:
+
+  1. h_acc_m at RTK Fix (~1.3–2.3 m): This is far higher than expected for carrier-phase Fix. Check whether the CSV is capturing hAcc from the PVT message
+  correctly vs. the gnss_fix_t struct's accuracy fields.
+  2. Base SVIN skipped: The base went to BCAST with svin_valid=0 and zero duration/accuracy. Confirm whether fixed-position mode was active, and if not, there's
+  a state-machine bug in the SVIN→BCAST transition guard.
+
+--------------------------------------------
+
+Let's investigate why h_acc reports ~1.3 m even at RTK Fix.
+
+Found it. Let me look at the LC29H parser in detail.
+
+  Read 1 file (ctrl+o to expand)
+
+● The root cause is clear. In parse_gga at line 106-107:
+
+  float hdop  = atof(f[8]);  /* GGA field 8 = HDOP */
+  pvt->h_acc  = hdop * 3.0f;
+
+  h_acc is being synthesized from HDOP using the rule of thumb HDOP × 3 m UERE. At HDOP=0.44 that gives 1.32 m — exactly what you're seeing. This estimate is
+  only meaningful for autonomous (non-corrected) GNSS. At RTK Fix, the module knows its actual ambiguity-resolved accuracy, but that number lives in the LC29H's
+  proprietary $PQTMEPE sentence (Horizontal Estimated Position Error), not in GGA.
+
+  The fix is to:
+  1. Enable $PQTMEPE output on the rover at init (PAIR513,1)
+  2. Parse it in the reader task and write pvt->h_acc / pvt->v_acc directly from it
+  3. Keep the HDOP fallback only until the first EPE sentence arrives
+
+Everything is in place. Here's a summary of what changed and one caveat to watch for on the next flash:
+
+  ---
+  Changes made (gnss_lc29h.c):
+
+  ┌──────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────┐
+  │       Location       │                                         What changed                                         │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ File-scope statics   │ Added s_epe_received flag                                                                    │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ parse_gga            │ HDOP×3 fallback now only runs when s_epe_received == false                                   │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ After parse_gsa      │ New parse_epe() — parses $PQTMEPE HEPE/VEPE directly into pvt->h_acc/v_acc and sets the flag │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Reader task dispatch │ Added PQTMEPE, branch before the PQTM catch-all                                              │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Rover init           │ Added PAIR513,1 (enable EPE output) before PQTMSAVEPAR                                       │
+  └──────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  What to watch in the serial log on the next test: You should see $PQTMEPE,... sentences appearing in the log (they fall through to the PQTM INFO logger until
+  the PQTMEPE, branch catches them, but after this flash they'll be silently parsed). At RTK Fix you should see h_acc_m drop to centimetre range (0.01–0.05 m)
+  in the CSV rather than 1.3 m.
+
+  One uncertainty: PAIR513,1 is the PAIR command for enabling $PQTMEPE output based on Quectel LC29H documentation, but if the module logs ERROR in response
+  rather than OK, the sentence may need a different enable command (or may already be on by default). Check the serial log for the PAIR513 response line — if
+  it's already arriving without the explicit enable, you can remove that command.
+
+------------------------------------------------
+
+ let's also investigate the base svin_valid=0 issue
+
+
+  ---
+  Root cause — three-part chain
+
+  1. The LC29H had a stored valid position from the previous session. When gnss_start_survey_in() reset the module, it booted back in base mode and went straight
+  to broadcasting RTCM (including MSG 1005 with the stored ARP) without running a new survey-in.
+  2. Because no survey-in ran, the module never emitted $PQTMSVINSTATUS sentences. The parse_svinstatus path was never triggered, s_svin_updated was never set,
+  and s_last_svin remained zero-initialized for the entire session.
+  3. The first MSG 1005 reception in broadcast_rtcm() already logged "Survey-in converged", but that state was never written back to s_last_svin. So the CSV and
+  UI always saw svin_valid=0.
+
+  Fix (base_app.c): when the first 1005/1006 is seen, the existing saw_arb transition now also sets s_last_svin.valid = true under the lock. On the next 10-second
+  CSV row, svin_valid will be 1. The svin_dur_s and svin_acc_m columns will stay 0 when using a stored position (there's no active survey-in to report
+  duration/accuracy for), which is accurate.
+
+  Secondary note worth watching: gnss_poll_svin_status() sends $PQTMSVINSTATUS,R every 10 seconds during broadcast. When the module has a stored position and no
+  active survey-in, check the serial log to see whether it replies with $PQTM,PQTMSVINSTATUS,0,0,1,... (active=0, valid=1) or simply no response. If it does
+  reply, that path through parse_svinstatus(nmea_buf, 3) would have populated s_last_svin correctly on its own — which would suggest the poll interval just didn't
+  align with the CSV rows in this test. If it gives no response, the fix above is the right permanent solution.
+
+------------------------------------------------
+
+What would be the best testing procedure? For example how long to run? Experiment with resets and power cycling? 
+
+Good question. The two fixes touch different failure modes, so the test matrix needs to cover both deliberately. Here's what I'd do:
+
+  ---
+  What each fix needs to prove
+
+  h_acc (PQTMEPE fix):
+  - PAIR513,1 was accepted by the module (not silently rejected)
+  - $PQTMEPE sentences appear in the stream
+  - h_acc at RTK Fix drops from ~1.3 m to ~0.02–0.05 m
+  - The HDOP fallback works before EPE arrives (no garbage values at startup)
+  - EPE persists correctly after each reset type
+  
+  svin_valid (base fix):
+  - svin_valid transitions from 0 → 1 at the moment the first MSG 1005 is logged
+  - Works in both the stored-position case (fast, as you observed) and a genuine fresh survey-in
+
+  ---
+  Session plan
+  
+  Session 1 — Baseline verification (~25 min)
+
+  Both units from full cold start (power off, not just MCU reset). Run the serial monitor on the rover.
+
+  What to check in the serial log:
+  - Look for the PAIR513 ACK: $PQTM,PAIR513,OK*xx or ERROR. If it's ERROR, the command ID is wrong and EPE won't arrive.
+  - Within ~2 seconds of first GNSS fix, you should see $PQTMEPE,0.xxx,0.xxx,... appearing every second.
+  - Watch the RTK state transition log: RTK FIX sv=N hAcc=0.02m — the hAcc in the log should now be centimetre-level.
+
+  What to check in the CSV:
+
+  ┌────────────────────────┬──────────────────────────┬──────────────────────────┐
+  │         Column         │ Expected before this fix │      Expected after      │
+  ├────────────────────────┼──────────────────────────┼──────────────────────────┤
+  │ h_acc_m at carr_soln=2 │ ~1.3 m                   │ 0.02–0.05 m              │
+  ├────────────────────────┼──────────────────────────┼──────────────────────────┤
+  │ Base svin_valid        │ 0 always                 │ 1 once first 1005 logged │
+  └────────────────────────┴──────────────────────────┴──────────────────────────┘
+
+  Run until you have at least 5 consecutive RTK Fix rows in the rover CSV (~15 minutes total is enough, but 20 is comfortable).
+
+  ---
+  Session 2 — MCU reset on rover (~10 min)
+
+  After the rover is in RTK Fix, trigger an MCU reset (not a power cycle — the GNSS module board stays powered).
+
+  What to verify:
+  - s_epe_received resets to false (it's BSS — MCU reset zero-initialises it). The first 1–2 CSV rows after the reset should show HDOP×3 values (~1.3 m) briefly,
+  then drop to EPE values as soon as the first $PQTMEPE arrives (~1 s). This is the correct transient behaviour.
+  - RTK Fix should be immediate or within a few seconds because the GNSS module retained state — same as ROVER_002/003 in your test.
+  - If h_acc stays at 1.3 m indefinitely after the reset, PAIR513 was not saved to flash by PQTMSAVEPAR and the module stopped outputting EPE after its own
+  reboot.
+
+  ---
+  Session 3 — Module board cycle on rover (~15 min)
+  
+  After RTK Fix, power-cycle the GNSS module board (but not the MCU, same as your ROVER_003→004 transition).
+
+  What to verify:
+  - s_epe_received is still true (MCU didn't reset, static persists). pvt.h_acc holds the last EPE value from before the cycle. During the no-fix phase
+  (fix_type=0, quality=0), parse_gga exits early and doesn't touch h_acc — so the stale value is harmless.
+  - First Float fix row: h_acc should immediately reflect the EPE value, not the HDOP fallback.
+  - Cold reacquisition time to RTK Fix: your ROVER_004 showed 32 s to Float, 7 s to Fix — that's the target baseline.
+  - If PAIR513 was not saved, $PQTMEPE won't appear after the module restarts, h_acc will eventually freeze at the pre-cycle EPE value and never update. You'd
+  notice because the stale value won't change epoch to epoch.
+
+  ---
+  Session 4 — Base position consistency check (~10 min)
+
+  This one is specific to the svin_valid fix and the stored-position behaviour.
+
+  - Cold-start the base, watch the serial log for when PQTMSVINSTATUS is polled ($PQTMSVINSTATUS,R is sent every 10 s). Check whether the module replies. If it
+  replies with active=0, valid=1, that's the stored-position confirmation and the poll path in parse_svinstatus would have worked too (useful to know for the
+  future).
+  - Full power-cycle the base (not just MCU reset). On the next boot it should again use the stored position and svin_valid should reach 1 quickly (within the
+  time of the first 1005 frame, matching rtcm_1005_cnt=4 at ~13 s as observed).
+  - To verify a genuine fresh survey-in: you can force it by sending PQTMRESTOREPAR via the serial CLI to wipe the stored position, then cold-start. Survey-in
+  should take ~5–10 minutes to converge. Watch svin_dur_s and svin_acc_m update in the CSV from the autonomous $PQTMSVINSTATUS output. When valid=1 appears via
+  the parse_svinstatus path, it should match the moment s_last_svin.valid is set by saw_arb (since both happen when the first 1005 is logged). If they arrive in
+  the same CSV row: good. If parse_svinstatus sets it first, you'll see valid=1 alongside real dur_s/acc_m values rather than zeros — that's even better.
+
+  ▎ Note: PQTMRESTOREPAR is destructive (wipes all saved config, not just position). Only use it on the base unit in a controlled setting, and be ready to re-run 
+  ▎ the full base initialisation sequence. Your existing memory notes flag this as dangerous.
+
+  ---
+  Minimum viable test
+  
+  If time is limited, Session 1 + Session 2 catches both fixes in their primary failure mode. Sessions 3 and 4 are for edge cases. The total is ~1 hour but you
+  get meaningful signal from the first 30 minutes.
+
+----------------------------------------------------------------
+
+❯ The current state of testing is using the sdcards because I can't get serial data when outside. Can we get some of this information by writing it to another    
+  file on she sdcard? In other words, is there a way to get other specific info/events given the current outside running setup?                                   
+
+
+● Good idea — a dedicated event log on the SD card is exactly what's needed here. Let me look at the component CMakeLists files before deciding where to wire
+  things.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good — gnss and base_station don't currently depend on sdcard, but adding sdcard to base_station is clean. I'll keep gnss dependency-free by exposing two simple
+  getters. Here's the full implementation:
+     
+  Plan:
+  - sdcard: add sdlog_event() that writes to a second timestamped EVENT_xxx.LOG file (synchronous, since events are rare)
+  - gnss: add s_pair513_ack detection in the reader, expose gnss_epe_valid() + gnss_pair513_ack() getters
+  - base_station: add sdcard to REQUIRES, call sdlog_event() at saw_arb and SVIN updates
+  - main.cpp: log RTK transitions, PAIR513 result, and first EPE event
+
+Clean build. Here's what the new SD card output will look like after a test session:
+
+  ---
+  Rover SD card (e.g., ROVER_005.CSV + ROVER_005.LOG)
+  
+  ROVER_005.LOG:
+  time_s,event
+  3,gnss: init OK — mode=ROVER
+  4,gnss: PAIR513 (EPE enable) ack=OK
+  5,rover: RTK NONE sv=0 h_acc=0.000m diff_age=0.0s
+  38,rover: first PQTMEPE received — h_acc now 2.341m (was HDOP estimate)
+  42,rover: RTK FLOAT sv=17 h_acc=2.760m diff_age=2.0s
+  49,rover: RTK FIX sv=18 h_acc=0.023m diff_age=1.9s
+
+  Base SD card (BASE_003.CSV + BASE_003.LOG)
+
+  BASE_003.LOG:
+  time_s,event
+  12,gnss: init OK — mode=BASE
+  13,base: first RTCM 1005 in stream — position valid (stored or surveyed)
+  If a genuine survey-in runs, you'd also see lines like:
+  22,base: svin active=1 valid=0 dur=120s acc=4.12m
+  32,base: svin active=1 valid=0 dur=240s acc=2.83m
+  41,base: svin active=0 valid=1 dur=312s acc=1.95m
+
+  ---
+  What each log line answers from the test plan:
+  
+  ┌──────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────┐
+  │            Test question             │                           Log line to look for                           │
+  ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Did PAIR513 take effect?             │ PAIR513 ack=OK vs ack=ERROR vs ack=no-response                           │
+  ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Is EPE arriving?                     │ first PQTMEPE received — if absent, module isn't sending it              │
+  ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ h_acc at EPE arrival                 │ the value on the first PQTMEPE line                                      │
+  ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ RTK reacquisition time after reset   │ gap between RTK NONE and RTK FLOAT/FIX events                            │
+  ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Did base use stored vs fresh survey? │ svin lines present = fresh survey; only 1005 in stream = stored position │
+  ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ SVIN convergence quality             │ svin valid=1 dur=Xs acc=Y.YYm when it does run                           │
+  └──────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────┘
+
+------------------------------------------
+
+Please review the outside test CSV and Log files in /sdcard. Test sequence: 001, turn both on. Rover 002, reset MCU. Rover 003, power cycle. Base 002, power cycle Base.
+
+Now I have a complete picture across all 5 sessions. Here's the full analysis.
+
+  ---
+  Outdoor Test Review — 2026-06-13
+  
+  Test Sequence Map
+
+  ┌───────────┬─────────────────────────────────────┬─────────────────┐
+  │   File    │            What happened            │    Duration     │
+  ├───────────┼─────────────────────────────────────┼─────────────────┤
+  │ BASE_001  │ Power on, survey-in, full broadcast │ 1910s (~32 min) │
+  ├───────────┼─────────────────────────────────────┼─────────────────┤
+  │ ROVER_001 │ Same boot as base, cold start       │ 1181s (~20 min) │
+  ├───────────┼─────────────────────────────────────┼─────────────────┤
+  │ ROVER_002 │ MCU reset (not power cycle)         │ 204s            │
+  ├───────────┼─────────────────────────────────────┼─────────────────┤
+  │ ROVER_003 │ Power cycle rover                   │ 1058s (~18 min) │
+  ├───────────┼─────────────────────────────────────┼─────────────────┤
+  │ BASE_002  │ Power cycle base                    │ 462s (~8 min)   │
+  └───────────┴─────────────────────────────────────┴─────────────────┘
+
+  ---
+  The Headline: RTK Fixed Was Achieved
+
+  carr_soln=2 (GGA quality=4, genuine RTK Fixed) was confirmed with the BT-760 antenna. This was never achieved with the patch antenna.
+
+  ROVER_001 causal chain:
+  t=0   cold start, no GNSS
+  t=33  standalone 3D fix (sv=4)
+  t=321 base 1005 ARP hits LoRa stream (321s survey-in)
+  t=340 ROVER_001 carr_soln=1 RTK Float
+  t=341 ROVER_001 carr_soln=2 RTK Fixed  ← 1 second after Float
+        sustained Fixed for the remaining 840s with no dropouts
+
+  What true Fixed looks like in position data — during the stable Fixed period the lat/lon stabilizes to ±1–4 cm scatter at 7-decimal precision. The position IS
+  centimeter-quality; the h_acc_m column does not reflect this (see bug #2 below).
+
+  ---
+  Session-by-Session Findings
+
+  BASE_001 / BASE_002
+
+  Good news: zero RTCM errors in both sessions across 11,089 and 2,400+ frames respectively. LoRa transport is solid.
+
+  One anomaly: the state machine goes SVIN → BCAST at t=12 (10 seconds), yet the LOG shows first 1005 at t=321 (BASE_001) and t=333 (BASE_002). The base broadcasts MSM4
+  corrections for ~310s before the 1005 ARP appears. This is expected LC29H behavior — it outputs MSM4 frames from the start, but the rover can't use them until it receives
+  the 1005. The rover data confirms the rover stayed at quality=1 standalone until after the base's 1005 arrived.
+
+  The svin_dur_s and svin_acc_m columns are always 0.00 — this is bug #1 (see below). The svin_valid column correctly flips 0→1 at the right time via the 1005-detection
+  fallback in broadcast_rtcm().
+
+  ROVER_002 (MCU reset)
+
+  Starts at carr_soln=2 immediately at t=4 with diff_age=6.7s. LC29H retained RTK state across MCU reset; the slightly stale 6.7s diff_age is from the LoRa buffer draining.
+  Settled to 2.7–2.9s within 10 seconds. State preservation across MCU reset is confirmed working.
+
+  ROVER_003 (power cycle)
+
+  Three distinct phases:
+
+  Phase 1 — rapid Float/Fix oscillation (t=35–47): With only 9–13 SVs and PDOP=1.7, the LC29H bounced between Float (carr_soln=1) and Fixed (carr_soln=2) at 1–2 Hz. The CSV
+  shows multiple rows per second during this period because state changes trigger immediate log writes even with the reduced-rate commit. Stabilized at Fixed from t=57 once
+  ≥22 SVs were acquired.
+
+  Phase 2 — LoRa dropout (t=537–587): diff_age climbed: 2.6 → 10.6 → 20.5 → 30.5 → 40.6 → 50.5 → 4.2s. lora_rx_B was frozen (0 new bytes). This was the base power cycle. The
+  rover held Fixed through at least t=537 (50s stale corrections), then the LC29H dropped to Float at t=594. It re-acquired Fixed at t=618 — 31 seconds after corrections
+  resumed. Position snapped back to the reference position immediately on re-acquisition.
+
+  Phase 3 — small position jump (t=1008–1038): Position shifted by ~4 mm in lat / ~4 mm in lon while remaining Fixed. diff_age was nominal at 2.5–2.6s. Likely multipath or
+  atmospheric transient. At t=1058 diff_age=10.6s and lora_rx_B frozen — another dropout starting as the test ended.
+
+  ---
+  Bug #1 — svin_dur_s / svin_acc_m always 0
+
+  Root cause: gnss_poll_svin_status() sends the wrong PQTM command format.
+
+  // gnss_lc29h.c:759 — current, wrong:
+  pqtm_send("PQTMSVINSTATUS,R");
+  // produces: $PQTMSVINSTATUS,R*XX  (not a valid PQTM query)
+
+  The parser expects a response matching $PQTM,PQTMSVINSTATUS,0,.... The correct query is:
+
+  // fix:
+  pqtm_send("PQTM,PQTMSVINSTATUS,R");
+  // produces: $PQTM,PQTMSVINSTATUS,R*XX  ← correct PQTM query format
+
+  The svin_valid column works only because broadcast_rtcm() forcibly sets s_last_svin.valid = true when it first sees a 1005 frame — that's a workaround that happens to be
+  correct, but dur_s and mean_acc_m never get populated.
+
+  Fix is one character change at gnss_lc29h.c:759.
+
+  ---
+  Bug #2 — h_acc_m is HDOP×3, not RTK accuracy
+  
+  PAIR513 (which enables $PQTMEPE output) is returning no-response. The code logs this at boot:
+  3,gnss: PAIR513 (EPE enable) ack=no-response
+
+  So s_epe_received stays false and h_acc_m is computed as hdop * 3.0f the entire session. With HDOP ≈ 0.47–0.62 during a good-geometry Fix, this gives 1.4–1.9 m — which is
+  what you see in every row, regardless of whether you're at Float or Fixed.
+
+  The position scatter (±2–4 cm during stable Fixed) shows the actual RTK accuracy is centimeter-level, but the CSV column h_acc_m is useless for distinguishing Float from
+  Fixed. This needs to be fixed to make the capture quality gate (h_acc ≤ threshold) meaningful.
+
+  The ACK detection pattern in the reader is looking for $PQTM,PAIR513,... — a PAIR-in-PQTM format that doesn't exist. PAIR ACKs use $PAIR001,<ID>,<result> format. This
+  needs investigation — either PAIR513 is wrong for the RSA firmware, or the ACK pattern and/or timing is off.
+
+  ---
+  Summary of Fixes Needed
+
+  ┌─────────────────┬─────────────────────────────────────────────────────┬──────────────────────┐
+  │    Priority     │                         Fix                         │      File:line       │
+  ├─────────────────┼─────────────────────────────────────────────────────┼──────────────────────┤
+  │ 1 (trivial)     │ Change "PQTMSVINSTATUS,R" → "PQTM,PQTMSVINSTATUS,R" │ gnss_lc29h.c:759     │
+  ├─────────────────┼─────────────────────────────────────────────────────┼──────────────────────┤
+  │ 2 (investigate) │ PAIR513 / PQTMEPE not working — h_acc is HDOP×3     │ gnss_lc29h.c:528,371 │
+  └─────────────────┴─────────────────────────────────────────────────────┴──────────────────────┘
+
+  Want me to make the fix for bug #1 now? It's a one-line change. Bug #2 needs a bit more investigation into whether the RSA firmware supports PAIR513 at all or if a
+  different command/timing is needed.
+
+Fix bug #1:
+Done. gnss_lc29h.c:759 — "PQTMSVINSTATUS,R" → "PQTM,PQTMSVINSTATUS,R".
+
+  On the next base session, gnss_poll_svin_status() will send the correct $PQTM,PQTMSVINSTATUS,R*XX query every 10 s. The reader already has the matching parser for the
+  $PQTM,PQTMSVINSTATUS,0,active,valid,obs,... response format, so svin_dur_s and svin_acc_m should start populating in BASE CSV once the LC29H responds.
+
+Fix bug #2
+Let me find s_pair513_ack and understand how the EPE ACK is detected and reported.
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Clear picture. The ACK detection is looking for $PQTM,PAIR513,OK — a format that doesn't exist. PAIR ACKs in the Quectel protocol are $PAIR001,513,0 (MSG_ID,result). The
+Done. The change is at gnss_lc29h.c:370–372.
+
+  What this fixes: The old check matched $PQTM,PAIR513,... which is not a real PAIR response format. The correct Quectel PAIR ACK is $PAIR001,<ID>,<result>, so PAIR513's ACK
+  is $PAIR001,513,0*cs. With the old pattern, s_pair513_ack stayed 0 (pending) and the LOG always reported no-response.
+
+  What to watch in the next test's .LOG:
+
+  ┌───────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
+  │                    Outcome                    │                                         Meaning                                          │
+  ├───────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+  │ ack=OK + rover: first PQTMEPE received in LOG │ Fix worked — h_acc_m in CSV is now real RTK precision                                    │
+  ├───────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+  │ ack=OK but no PQTMEPE event                   │ LC29H ACKs PAIR513 but RSA firmware suppresses EPE output — need a different approach    │
+  ├───────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+  │ ack=ERROR                                     │ Module rejects PAIR513 — wrong command for this firmware                                 │
+  ├───────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+  │ ack=no-response still                         │ Something else is wrong — check the serial monitor for what $PAIR001 sentences look like │
+  └───────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
+

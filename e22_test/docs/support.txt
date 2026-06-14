@@ -1,0 +1,141 @@
+Looking at both the E22-900T30D datasheet constraints and the ESP32-S3 N16R8 pin reservations before making a recommendation.
+
+  The ESP32-S3 N16R8 has several GPIO ranges to avoid:
+  - GPIO6–11: Internal Quad Flash
+  - GPIO33–37: Octal Flash/PSRAM (the N16R8 uses both, so these are consumed)
+  - GPIO0, 3, 45, 46: Strapping pins — avoid for M0/M1 especially, since their state at boot affects startup behavior
+
+  Suggested assignments:
+
+  ┌───────────────┬───────────────┬───────────┬────────────────────────────────────────────────────┐
+  │    E22 Pin    │ ESP32-S3 GPIO │ Direction │                     Rationale                      │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ TXD (E22→ESP) │ GPIO18        │ Input     │ UART1 RX                                           │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ RXD (ESP→E22) │ GPIO17        │ Output    │ UART1 TX                                           │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ AUX           │ GPIO4         │ Input     │ Interrupt-capable; use to detect module busy/ready │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ M0            │ GPIO5         │ Output    │ Clear of strapping and flash pins                  │
+  ├───────────────┼───────────────┼───────────┼────────────────────────────────────────────────────┤
+  │ M1            │ GPIO21        │ Output    │ Clear of strapping and flash pins                  │
+  └───────────────┴───────────────┴───────────┴────────────────────────────────────────────────────┘
+
+  A few things worth knowing before wiring:
+
+  Power: At 30 dBm (1 W) the E22-900T30D can draw ~700 mA peak during transmission. Don't power it from the ESP32-S3's onboard 3.3 V regulator — give it a dedicated supply capable
+  of the peak current. The logic I/O is 3.3 V compatible so no level shifting is needed.
+
+  AUX behaviour: AUX goes low while the module is busy (transmitting, receiving, changing config). It's worth wiring it to an interrupt-capable pin (all the ones above qualify) so
+  you can use gpio_isr_handler rather than polling.
+
+  M0/M1 at boot: Since M0/M1 are outputs driven by the ESP32-S3, they'll float briefly during reset. If the E22 latches mode on power-up before the ESP32 drives them, add 10 kΩ
+  pull-downs to default to normal UART mode (M0=0, M1=0) during the boot window.
+
+-------------------------------------------- 
+ 
+  Suggested pins for the second module (UART2, clear of flash/PSRAM/strapping pins):
+
+  ┌─────────────────┬────────┐
+  │     Signal      │  GPIO  │
+  ├─────────────────┼────────┤
+  │ TXD (ESP→E22-B) │ GPIO19 │
+  ├─────────────────┼────────┤
+  │ RXD (E22-B→ESP) │ GPIO20 │
+  ├─────────────────┼────────┤
+  │ AUX             │ GPIO1  │
+  ├─────────────────┼────────┤
+  │ M0              │ GPIO2  │
+  ├─────────────────┼────────┤
+  │ M1              │ GPIO38 │
+  └─────────────────┴────────┘
+
+ --------------------------------------------
+ 
+ 
+ I am running from 3.3V now. Can you drop the power output to the least and what other tests could be run to make sure modules work as expected?                                    
+
+● Good news: the code already sets E22TxPower::DBM21 in make_config() — that's the minimum the T30D supports, so power is already as low as it goes.
+
+  For tests, here's what's worth running to fully validate the modules:
+
+  1. Packet error rate (PER)
+  Send N packets from A, count how many B receives. The industry standard acceptance threshold is <1% PER. Most useful test for link reliability.
+
+  2. Round-trip latency statistics
+  Timestamp each ping/echo and compute min/max/average/jitter over ~100 samples. Gives a baseline to compare against if you change air rate or antenna later.
+
+  3. Noise floor
+  Enable rssi_noise on both modules and sample the ambient RSSI with no transmission. Tells you how clean the 900 MHz channel is in your environment.
+
+  4. Air rate sweep
+  Run the PER test at K1_2, K2_4, K9_6, and K19_2. Documents the speed/reliability tradeoff for your specific environment.
+
+  5. Maximum payload
+  Send 200-byte packets (the default sub-packet size limit). Verifies framing doesn't break at the boundary.
+
+  Want me to implement all of these as a structured test sequence that runs automatically and prints a summary report? Or is there a specific subset you want to start with?
+
+
+--------------------------------------------
+
+  I (xxx) RESULT: ========================================
+  I (xxx) RESULT:            TEST SUMMARY
+  I (xxx) RESULT: ========================================
+  I (xxx) RESULT: 1. Packet Error Rate (50 packets)
+  I (xxx) RESULT:    Received : 50 / 50  (0.0% loss)
+  I (xxx) RESULT:    RSSI     : min=-120  avg=-118  max=-115 dBm
+  I (xxx) RESULT: 2. Round-trip Latency (30 samples)
+  I (xxx) RESULT:    Min    : 420 ms
+  I (xxx) RESULT:    Avg    : 448 ms
+  I (xxx) RESULT:    Jitter :   8 ms
+  I (xxx) RESULT: 3. Noise Floor
+  I (xxx) RESULT:    Module A : -120 dBm          ← or "not supported"
+  I (xxx) RESULT: 4. Air Rate Sweep (20 packets each)
+  I (xxx) RESULT:    Rate        Rcvd/Sent   Loss    RSSI     RTT
+  I (xxx) RESULT:    1.2 kbps    20 / 20     0.0%  -118 dBm   890 ms
+  I (xxx) RESULT:    9.6 kbps    20 / 20     0.0%  -115 dBm   115 ms
+  I (xxx) RESULT: 5. Payload Sizes
+  I (xxx) RESULT:      1 bytes : PASS
+  I (xxx) RESULT:    200 bytes : PASS
+
+-------------------------------------------------
+
+I (324) gpio: GPIO[38]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (334) main: Configuring radios
+I (614) main: --- Test 3: Noise Floor ---
+I (2214) main: --- Test 1: Packet Error Rate (50 packets) ---
+I (129214) main: --- Test 2: Round-trip Latency (30 samples) ---
+I (205414) main: --- Test 4: Air Rate Sweep (4 rates x 20 packets) ---
+I (205414) main:   testing 1.2 kbps
+I (256814) main:   testing 2.4 kbps
+I (308214) main:   testing 4.8 kbps
+I (354394) main:   testing 9.6 kbps
+I (399774) main: --- Test 5: Payload Sizes (1/50/100/200 bytes) ---
+I (418494) RESULT: ========================================
+I (418494) RESULT:            TEST SUMMARY
+I (418494) RESULT: ========================================
+I (418494) RESULT: 1. Packet Error Rate (50 packets)
+I (418494) RESULT:    Received : 50 / 50  (0.0% loss)
+I (418504) RESULT:    RSSI     : min=-124  avg=-122  max=-111 dBm
+I (418504) RESULT: 2. Round-trip Latency (30 samples)
+I (418514) RESULT:    Min    : 2489 ms
+I (418514) RESULT:    Max    : 2490 ms
+I (418524) RESULT:    Avg    : 2489 ms
+I (418524) RESULT:    Jitter : 0 ms
+I (418524) RESULT: 3. Noise Floor
+I (418534) RESULT:    Module A : command not supported by firmware
+I (418534) RESULT:    Module B : command not supported by firmware
+I (418544) RESULT: 4. Air Rate Sweep (20 packets each)
+I (418544) RESULT:    Rate        Rcvd/Sent   Loss    RSSI     RTT
+I (418554) RESULT:    1.2 kbps    20 / 20       0.0%  -123 dBm  2490 ms
+I (418554) RESULT:    2.4 kbps    20 / 20       0.0%  -123 dBm  2490 ms
+I (418564) RESULT:    4.8 kbps    20 / 20       0.0%  -123 dBm  2229 ms
+I (418574) RESULT:    9.6 kbps    20 / 20       0.0%  -123 dBm  2170 ms
+I (418574) RESULT: 5. Payload Sizes
+I (418584) RESULT:       1 bytes : PASS
+I (418584) RESULT:      50 bytes : PASS
+I (418584) RESULT:     100 bytes : PASS
+I (418594) RESULT:     200 bytes : FAIL
+I (418594) RESULT: ========================================
+I (418604) main_task: Returned from app_main()

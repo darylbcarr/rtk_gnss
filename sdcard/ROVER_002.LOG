@@ -1,0 +1,4 @@
+time_s,event
+2,gnss: init OK — mode=ROVER
+3,gnss: PAIR513 (EPE enable) ack=no-response
+4,rover: RTK FIX sv=33 h_acc=1.560m diff_age=6.7s

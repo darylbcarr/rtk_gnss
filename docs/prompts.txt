@@ -9,3 +9,5 @@ Create a comprehensive list/comparison of RTK base resources in North America. I
 Can you give me a report on available ZED-F9P-04B development modules
 
 I have a ZED-F9P-o4b-01 module connected to an ESP32-S3 on TX1: GPIO18, RX1: GPIO17. Please create a component and test main to get started.
+
+I am starting to breadboard with these components: ESP32-S3 N16R8, GY-BNO055 9DOF IMU, Ebyte E22-900T30D CE, Quectel LC29H EA, OLED i2C 128x64, 360 Degree Rotary Encoder module KY-040. Note that the previous development utilized the ZED-F9P-04B module. What is the best way to continue development with the Quectel without totally losing the ZED-F9P code? I would like suggestions for pin use of the ESP32.

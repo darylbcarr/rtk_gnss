@@ -1,0 +1,23 @@
+time_s,event
+3,gnss: init OK — mode=ROVER
+3,gnss: PAIR513 (EPE enable) ack=no-response
+35,rover: RTK FLOAT sv=10 h_acc=3.120m diff_age=2.3s
+39,rover: RTK FIX sv=9 h_acc=3.270m diff_age=2.5s
+39,rover: RTK FLOAT sv=9 h_acc=3.270m diff_age=2.9s
+40,rover: RTK FIX sv=10 h_acc=3.270m diff_age=2.5s
+41,rover: RTK FLOAT sv=10 h_acc=3.270m diff_age=2.8s
+41,rover: RTK FIX sv=12 h_acc=3.270m diff_age=2.4s
+42,rover: RTK FLOAT sv=12 h_acc=3.270m diff_age=2.8s
+43,rover: RTK FIX sv=12 h_acc=3.270m diff_age=2.5s
+43,rover: RTK FLOAT sv=12 h_acc=3.270m diff_age=2.9s
+44,rover: RTK FIX sv=13 h_acc=3.270m diff_age=2.6s
+44,rover: RTK FLOAT sv=13 h_acc=3.270m diff_age=2.8s
+44,rover: RTK FIX sv=13 h_acc=3.270m diff_age=2.4s
+45,rover: RTK FLOAT sv=13 h_acc=3.270m diff_age=2.8s
+46,rover: RTK FIX sv=13 h_acc=3.270m diff_age=2.5s
+46,rover: RTK FLOAT sv=13 h_acc=3.270m diff_age=3.3s
+47,rover: RTK FIX sv=13 h_acc=3.270m diff_age=2.5s
+47,rover: RTK FLOAT sv=13 h_acc=3.270m diff_age=2.9s
+47,rover: RTK FIX sv=13 h_acc=3.270m diff_age=2.4s
+594,rover: RTK FLOAT sv=29 h_acc=1.470m diff_age=1.4s
+618,rover: RTK FIX sv=29 h_acc=1.470m diff_age=1.6s

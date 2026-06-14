@@ -1,0 +1,2 @@
+time_s,fix_type,carr_soln,sv_count,h_acc_m,v_acc_m,pdop,diff_age_s,arp_seen,lat,lon,alt_m,lora_rx_B
+3,3,2,35,1.320,1.980,0.8,5.7,1,40.9791938,-90.3693953,241.51,772
