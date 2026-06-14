@@ -37,6 +37,14 @@ void sdlog_flush(void);
 
 bool sdlog_is_ready(void);
 
+/*
+ * Write a timestamped event line to the companion EVENT_NNN.LOG file.
+ * Synchronous (blocks briefly on SD write) — intended for infrequent
+ * diagnostic events, not high-rate data.  Safe to call from any task.
+ * No-op if the SD card is not ready.
+ */
+void sdlog_event(const char *fmt, ...);
+
 #ifdef __cplusplus
 }
 #endif

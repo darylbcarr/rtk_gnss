@@ -1,6 +1,7 @@
 #include "base_app.h"
 #include "gnss.h"
 #include "transport.h"
+#include "sdcard.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -116,6 +117,9 @@ static void broadcast_rtcm(void)
                 s_last_svin = sv;
                 xSemaphoreGive(s_svin_lock);
                 log_svin_progress(&sv);
+                sdlog_event("base: svin active=%d valid=%d dur=%lus acc=%.2fm",
+                            (int)sv.active, (int)sv.valid,
+                            (unsigned long)sv.dur_s, sv.mean_acc_m);
             }
         }
 
@@ -150,6 +154,15 @@ static void broadcast_rtcm(void)
                     if (!saw_arb) {
                         saw_arb = true;
                         ESP_LOGI(TAG, "Survey-in converged — RTCM %u in stream", mt);
+                        sdlog_event("base: first RTCM %u in stream — position valid (stored or surveyed)", mt);
+                        /* Mark position valid regardless of whether a fresh survey-in
+                         * was run.  When the module boots with a stored position it
+                         * skips survey-in entirely and never emits PQTMSVINSTATUS,
+                         * so s_last_svin.valid would otherwise stay 0 forever. */
+                        xSemaphoreTake(s_svin_lock, portMAX_DELAY);
+                        s_last_svin.valid  = true;
+                        s_last_svin.active = false;
+                        xSemaphoreGive(s_svin_lock);
                     }
                     s_rtcm_1005_count++;
                 }

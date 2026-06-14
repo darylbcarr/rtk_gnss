@@ -22,6 +22,8 @@ static const char *TAG = "gnss";
 
 static uart_port_t       s_uart;
 static bool              s_booted_in_base;   /* RTCM detected at init — saved config intact */
+static bool              s_epe_received;     /* true once PQTMEPE sentence arrives */
+static int               s_pair513_ack;      /* 0=pending, 1=OK, -1=ERROR */
 static int               s_nreset_pin = -1;  /* GPIO wired to NRESET, or -1 if not connected */
 static SemaphoreHandle_t s_tx_mutex;
 
@@ -103,9 +105,15 @@ static bool parse_gga(char *line, gnss_pvt_t *pvt)
     pvt->num_sv  = (uint8_t)atoi(f[7]);
     pvt->i_tow   = parse_utc_ms(f[1]);
 
-    float hdop  = atof(f[8]);
-    pvt->h_acc  = hdop * 3.0f;
-    pvt->v_acc  = hdop * 4.5f;
+    if (!s_epe_received) {
+        /* PQTMEPE not yet received — use HDOP-scaled estimate as a stand-in.
+         * This overestimates accuracy and is only meaningful for autonomous
+         * (non-corrected) fixes; PQTMEPE replaces it as soon as it arrives. */
+        float hdop  = atof(f[8]);
+        pvt->h_acc  = hdop * 3.0f;
+        pvt->v_acc  = hdop * 4.5f;
+    }
+    /* else: h_acc/v_acc were set by the last PQTMEPE sentence — preserve them */
 
     pvt->carr_soln   = (quality == 4) ? 2 : (quality == 5) ? 1 : 0;
     pvt->fix_type    = (quality == 6) ? 1 : 3;
@@ -149,6 +157,22 @@ static void parse_gsa(char *line, gnss_pvt_t *pvt)
     char *f[20];
     if (nmea_split(line, f, 20) >= 16)
         pvt->pdop = atof(f[15]);
+}
+
+/* $PQTMEPE,<HEPE>,<VEPE>,<SEPE>,<3DEPE>*cs
+ * HEPE/VEPE are 1-sigma position errors in metres from the module's Kalman
+ * filter.  Unlike HDOP*UERE, these reflect actual RTK convergence quality. */
+static void parse_epe(char *line, gnss_pvt_t *pvt)
+{
+    char *f[6];
+    if (nmea_split(line, f, 6) < 3) return;
+    float hepe = atof(f[1]);
+    float vepe = atof(f[2]);
+    if (hepe > 0.0f) {
+        pvt->h_acc     = hepe;
+        pvt->v_acc     = vepe;
+        s_epe_received = true;
+    }
 }
 
 /*
@@ -339,8 +363,14 @@ static void gnss_reader_task(void *arg)
             } else if (strncmp(nmea_buf + 1, "PQTM,PQTMSVINSTATUS,", 20) == 0) {
                 /* Query response: $PQTM,PQTMSVINSTATUS,<result>,active,valid,obs,...,meanAcc */
                 parse_svinstatus(nmea_buf, 3);
+            } else if (strncmp(nmea_buf + 1, "PQTMEPE,", 8) == 0) {
+                parse_epe(nmea_buf, &pvt);
             } else if (strncmp(nmea_buf + 1, "PQTM", 4) == 0 ||
                        strncmp(nmea_buf + 1, "PAIR", 4) == 0) {
+                /* Detect PAIR513 ACK: $PAIR001,513,0*cs = success, non-0 = error */
+                if (strncmp(nmea_buf + 1, "PAIR001,513,", 12) == 0) {
+                    s_pair513_ack = (nmea_buf[13] == '0') ? 1 : -1;
+                }
                 /* All PQTM and PAIR responses at INFO so query replies are visible */
                 ESP_LOGI(TAG, "%s", nmea_buf);
             }
@@ -495,6 +525,8 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin,
         vTaskDelay(pdMS_TO_TICKS(100));
         pqtm_send("PQTMCFGRTK,W,1,1");   /* RTK enabled, corrections enabled */
         vTaskDelay(pdMS_TO_TICKS(200));
+        pqtm_send("PAIR513,1");           /* enable $PQTMEPE — actual EPE output */
+        vTaskDelay(pdMS_TO_TICKS(100));
         pqtm_send("PQTMSAVEPAR");         /* persist rover config to flash */
         vTaskDelay(pdMS_TO_TICKS(500));
         pqtm_send("PQTMCFGRTK,R");       /* read back — expect OK,1,1 */
@@ -724,7 +756,7 @@ bool gnss_get_svin_status(gnss_svin_t *out)
 
 void gnss_poll_svin_status(void)
 {
-    pqtm_send("PQTMSVINSTATUS,R");
+    pqtm_send("PQTM,PQTMSVINSTATUS,R");
 }
 
 int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)
@@ -740,3 +772,6 @@ int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)
         ESP_LOGW(TAG, "RTCM frame truncated: %u → %u bytes", (unsigned)item_size, (unsigned)max_len);
     return (int)item_size;
 }
+
+bool gnss_epe_valid(void)   { return s_epe_received; }
+int  gnss_pair513_ack(void) { return s_pair513_ack; }

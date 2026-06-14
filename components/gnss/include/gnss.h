@@ -95,6 +95,17 @@ void gnss_poll_svin_status(void);
  */
 int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms);
 
+/* True once a $PQTMEPE sentence has been received (actual EPE in use). */
+bool gnss_epe_valid(void);
+
+/*
+ * PAIR513 acknowledgement status from the module.
+ *  0  = not yet received (still waiting)
+ *  1  = OK (EPE output enabled)
+ * -1  = ERROR (command rejected — EPE will not arrive)
+ */
+int gnss_pair513_ack(void);
+
 #ifdef __cplusplus
 }
 #endif

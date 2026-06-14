@@ -4,9 +4,11 @@
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/message_buffer.h"
+#include "freertos/semphr.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -22,6 +24,8 @@ static const char *TAG = "sdlog";
 #define FLUSH_INTERVAL  10                 /* flush after every N lines written */
 
 static FILE                  *s_file          = NULL;
+static FILE                  *s_event_file    = NULL;
+static SemaphoreHandle_t      s_event_mutex   = NULL;
 static bool                   s_ready         = false;
 static MessageBufferHandle_t  s_msg_buf       = NULL;
 static volatile bool          s_flush_req     = false;
@@ -126,6 +130,20 @@ esp_err_t sdlog_init(const sdlog_cfg_t *cfg, const char *mode_name)
         return ESP_FAIL;
     }
 
+    /* Open companion event log */
+    char event_path[64];
+    snprintf(event_path, sizeof(event_path), "%s/%s_%03d.LOG", MOUNT_POINT, mode_name, num);
+    s_event_file  = fopen(event_path, "w");
+    s_event_mutex = xSemaphoreCreateMutex();
+    if (s_event_file) {
+        fprintf(s_event_file, "time_s,event\n");
+        fflush(s_event_file);
+        fsync(fileno(s_event_file));
+        ESP_LOGI(TAG, "Event log → %s", event_path);
+    } else {
+        ESP_LOGW(TAG, "Cannot open event log %s: %s", event_path, strerror(errno));
+    }
+
     /* Write CSV header matched to mode */
     if (strncmp(mode_name, "BASE", 4) == 0) {
         fprintf(s_file,
@@ -176,4 +194,23 @@ void sdlog_flush(void)
 bool sdlog_is_ready(void)
 {
     return s_ready;
+}
+
+void sdlog_event(const char *fmt, ...)
+{
+    if (!s_ready || !s_event_file || !s_event_mutex) return;
+    uint32_t t_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+    char line[LOG_LINE_MAX];
+    int n = snprintf(line, sizeof(line), "%lu,", (unsigned long)t_s);
+    va_list ap;
+    va_start(ap, fmt);
+    n += vsnprintf(line + n, sizeof(line) - (size_t)n, fmt, ap);
+    va_end(ap);
+    if (n <= 0 || n >= (int)sizeof(line) - 1) return;
+    line[n++] = '\n';
+    xSemaphoreTake(s_event_mutex, portMAX_DELAY);
+    fwrite(line, 1, (size_t)n, s_event_file);
+    fflush(s_event_file);
+    fsync(fileno(s_event_file));
+    xSemaphoreGive(s_event_mutex);
 }

@@ -218,7 +218,17 @@ extern "C" void app_main(void)
     if (gnss_init(GNSS_UART, GNSS_TX_PIN, GNSS_RX_PIN, GNSS_NRESET_PIN,
                   mode == DEVICE_MODE_ROVER) != ESP_OK) {
         ESP_LOGE(TAG, "GNSS init failed — halting");
+        sdlog_event("gnss: init failed — halting");
         return;
+    }
+    sdlog_event("gnss: init OK — mode=%s", mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
+
+    /* On rover, wait briefly for the PAIR513 ACK to arrive, then log it */
+    if (mode == DEVICE_MODE_ROVER) {
+        vTaskDelay(pdMS_TO_TICKS(600));
+        int ack = gnss_pair513_ack();
+        sdlog_event("gnss: PAIR513 (EPE enable) ack=%s",
+                    ack == 1 ? "OK" : ack == -1 ? "ERROR" : "no-response");
     }
 
     /* ── Mode-specific transport ──── */
@@ -362,7 +372,17 @@ extern "C" void app_main(void)
             ESP_LOGI(TAG, "RTK %s  sv=%u hAcc=%.3fm",
                      RTK_STR[pvt.carr_soln < 3 ? pvt.carr_soln : 0],
                      pvt.num_sv, pvt.h_acc);
+            sdlog_event("rover: RTK %s sv=%u h_acc=%.3fm diff_age=%.1fs",
+                        RTK_STR[pvt.carr_soln < 3 ? pvt.carr_soln : 0],
+                        pvt.num_sv, pvt.h_acc, pvt.diff_age_s);
             s_last_carr = pvt.carr_soln;
+        }
+
+        /* Log when EPE takes over from the HDOP fallback */
+        static bool s_epe_logged;
+        if (!s_epe_logged && gnss_epe_valid()) {
+            sdlog_event("rover: first PQTMEPE received — h_acc now %.3fm (was HDOP estimate)", pvt.h_acc);
+            s_epe_logged = true;
         }
 
         /* Periodic position log */
