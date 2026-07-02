@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RTK GNSS Monitor</title>
+<style>
+:root {
+    --bg:      #0f172a;
+    --surface: #1e293b;
+    --border:  #334155;
+    --text:    #f1f5f9;
+    --muted:   #64748b;
+    --green:   #22c55e;
+    --yellow:  #eab308;
+    --red:     #ef4444;
+    --blue:    #3b82f6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 16px;
+}
+header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+h1 { font-size: 16px; letter-spacing: 0.05em; color: var(--text); }
+#connStatus {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: auto;
+}
+#connStatus.connected { color: var(--green); }
+
+button {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+}
+button:hover { filter: brightness(1.15); }
+button.danger { background: var(--red); }
+button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+}
+button.secondary:hover { border-color: var(--text); color: var(--text); }
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 14px;
+}
+.card-title {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px 20px;
+}
+.field { display: flex; flex-direction: column; gap: 2px; }
+.label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.value { font-size: 15px; font-weight: 600; }
+.value.good   { color: var(--green); }
+.value.warn   { color: var(--yellow); }
+.value.bad    { color: var(--red); }
+.value.dim    { color: var(--muted); }
+
+.batt-wrap { display: flex; flex-direction: column; gap: 4px; }
+.batt-bar  { height: 4px; background: var(--border); border-radius: 2px; }
+.batt-fill { height: 100%; border-radius: 2px; transition: width .4s, background .4s; }
+
+.full-row { grid-column: 1 / -1; }
+.actions  { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+#logCard pre {
+    max-height: 140px;
+    overflow-y: auto;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.ts { color: var(--border); margin-right: 6px; }
+
+.rtk-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    background: var(--border);
+}
+.rtk-badge.fix   { background: #14532d; color: var(--green); }
+.rtk-badge.float { background: #451a03; color: var(--yellow); }
+.rtk-badge.none  { background: #450a0a; color: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>RTK GNSS Monitor</h1>
+    <button id="connectBtn">Connect</button>
+    <span id="connStatus">Not connected</span>
+</header>
+
+<!-- BASE panel -->
+<div id="basePanel" class="card" style="display:none">
+    <div class="card-title">Base Station</div>
+    <div class="grid">
+        <div class="field">
+            <span class="label">State</span>
+            <span id="bState" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Survey Duration</span>
+            <span id="bDur" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Position Accuracy</span>
+            <span id="bAcc" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Converged</span>
+            <span id="bOk" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">RTCM Frames</span>
+            <span id="bRtcm" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">ARP (1005) Sent</span>
+            <span id="bArp" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">RTCM Errors</span>
+            <span id="bErr" class="value dim">—</span>
+        </div>
+        <div class="field batt-wrap">
+            <span class="label">Battery</span>
+            <span id="bBatt" class="value dim">—</span>
+            <div class="batt-bar"><div id="bBattFill" class="batt-fill" style="width:0"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ROVER panel -->
+<div id="roverPanel" class="card" style="display:none">
+    <div class="card-title">Rover</div>
+    <div class="grid">
+        <div class="field">
+            <span class="label">Fix Type</span>
+            <span id="rFix" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">RTK Status</span>
+            <span id="rRtk" class="rtk-badge">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Satellites</span>
+            <span id="rSv" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Correction Age</span>
+            <span id="rAge" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Latitude</span>
+            <span id="rLat" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Longitude</span>
+            <span id="rLon" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">Altitude (MSL)</span>
+            <span id="rAlt" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">H. Accuracy</span>
+            <span id="rHacc" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">V. Accuracy</span>
+            <span id="rVacc" class="value dim">—</span>
+        </div>
+        <div class="field">
+            <span class="label">PDOP</span>
+            <span id="rPdop" class="value dim">—</span>
+        </div>
+        <div class="field batt-wrap">
+            <span class="label">Battery</span>
+            <span id="rBatt" class="value dim">—</span>
+            <div class="batt-bar"><div id="rBattFill" class="batt-fill" style="width:0"></div></div>
+        </div>
+        <div class="field full-row actions">
+            <button class="secondary" id="copyCoords">Copy Coordinates</button>
+        </div>
+    </div>
+</div>
+
+<!-- Log -->
+<div id="logCard" class="card">
+    <div class="card-title">Log</div>
+    <pre id="logPre"></pre>
+</div>
+
+<script>
+'use strict';
+
+const NUS_SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+const $  = id => document.getElementById(id);
+let device   = null;
+let rxBuf    = '';
+let lastRovr = null;
+
+/* ── Logging ─────────────────────────────────────────────────────────── */
+
+function log(msg) {
+    const pre = $('logPre');
+    const ts  = new Date().toLocaleTimeString();
+    pre.textContent = `[${ts}] ${msg}\n` + pre.textContent.slice(0, 3000);
+}
+
+/* ── Value helpers ───────────────────────────────────────────────────── */
+
+function battColor(pct) {
+    return pct > 50 ? 'var(--green)' : pct > 20 ? 'var(--yellow)' : 'var(--red)';
+}
+function accCls(m) {
+    return m < 0.05 ? 'good' : m < 0.5 ? 'warn' : 'bad';
+}
+function set(id, text, cls) {
+    const el = $(id);
+    el.textContent = text;
+    if (cls !== undefined) el.className = `value ${cls}`;
+}
+function setBatt(prefix, v, pct, chg) {
+    $(prefix + 'Batt').textContent = `${v.toFixed(2)} V  ${pct}%  ${chg ? '⚡ CHG' : 'DSC'}`;
+    $(prefix + 'Batt').className   = 'value ' + (pct > 50 ? 'good' : pct > 20 ? 'warn' : 'bad');
+    const fill = $(prefix + 'BattFill');
+    fill.style.width      = `${Math.min(pct, 100)}%`;
+    fill.style.background = battColor(pct);
+}
+
+/* ── Display update ──────────────────────────────────────────────────── */
+
+const FIX_LABEL  = ['NO FIX', 'DEAD REC', '2D FIX', '3D FIX'];
+const FIX_CLS    = ['bad',    'warn',     'warn',   'good'];
+const RTK_LABEL  = ['None',  'Float',  'Fix'];
+const RTK_CLS    = ['none',  'float',  'fix'];   /* matches .rtk-badge.<cls> */
+
+function updateBase(d) {
+    $('basePanel').style.display  = '';
+    $('roverPanel').style.display = 'none';
+
+    const stCls = d.st === 'BCAST' ? 'good' : d.st === 'SVIN' ? 'warn' : 'dim';
+    set('bState', d.st, stCls);
+    set('bDur',   `${d.dur} s`, d.dur > 0 ? 'good' : 'dim');
+    set('bAcc',   `${d.acc.toFixed(2)} m`, accCls(d.acc));
+    set('bOk',    d.ok ? 'YES' : 'NO',    d.ok  ? 'good' : 'warn');
+    set('bRtcm',  d.rtcm.toLocaleString(), d.rtcm > 0 ? 'good' : 'dim');
+    set('bArp',   d.a1005 > 0 ? `YES (${d.a1005})` : 'NO', d.a1005 > 0 ? 'good' : 'bad');
+    set('bErr',   String(d.err), d.err > 0 ? 'warn' : 'good');
+    setBatt('b', d.v, d.pct, d.chg);
+}
+
+function updateRover(d) {
+    $('roverPanel').style.display = '';
+    $('basePanel').style.display  = 'none';
+    lastRovr = d;
+
+    const fixIdx = Math.min(d.fix, FIX_LABEL.length - 1);
+    set('rFix', FIX_LABEL[fixIdx] ?? `fix=${d.fix}`, FIX_CLS[fixIdx] ?? 'dim');
+
+    const rtkEl  = $('rRtk');
+    const rtkIdx = Math.min(d.rtk, RTK_LABEL.length - 1);
+    rtkEl.textContent = RTK_LABEL[rtkIdx] ?? `rtk=${d.rtk}`;
+    rtkEl.className   = `rtk-badge ${RTK_CLS[rtkIdx] ?? ''}`;
+
+    set('rSv',   String(d.sv), d.sv >= 8 ? 'good' : d.sv >= 5 ? 'warn' : 'bad');
+
+    const age = d.age > 0 ? `${d.age.toFixed(1)} s` : '—';
+    set('rAge', age, d.age > 0 && d.age < 5 ? 'good' : d.age > 0 ? 'warn' : 'dim');
+
+    set('rLat',  `${d.lat >= 0 ? '' : ''}${d.lat.toFixed(7)}°`, 'good');
+    set('rLon',  `${d.lon.toFixed(7)}°`, 'good');
+    set('rAlt',  `${d.alt.toFixed(2)} m`);
+
+    const haCm = (d.ha * 100).toFixed(1);
+    const vaCm = (d.va * 100).toFixed(1);
+    set('rHacc', `${haCm} cm`, accCls(d.ha));
+    set('rVacc', `${vaCm} cm`, accCls(d.va));
+    set('rPdop', d.pdop.toFixed(1), d.pdop < 2 ? 'good' : d.pdop < 4 ? 'warn' : 'bad');
+
+    setBatt('r', d.v, d.pct, d.chg);
+}
+
+/* ── BLE notification handler ────────────────────────────────────────── */
+
+function onNotify(ev) {
+    rxBuf += new TextDecoder().decode(ev.target.value);
+
+    /* Pull complete JSON objects out of the streaming buffer */
+    let depth = 0, start = -1, inStr = false, esc = false;
+    for (let i = 0; i < rxBuf.length; i++) {
+        const c = rxBuf[i];
+        if (esc)          { esc = false; continue; }
+        if (c === '\\' && inStr) { esc = true;  continue; }
+        if (c === '"')    { inStr = !inStr; continue; }
+        if (inStr)        continue;
+        if (c === '{')    { if (depth++ === 0) start = i; }
+        else if (c === '}' && --depth === 0 && start >= 0) {
+            try {
+                const d = JSON.parse(rxBuf.slice(start, i + 1));
+                if      (d.m === 'B') updateBase(d);
+                else if (d.m === 'R') updateRover(d);
+            } catch (_) { /* malformed — discard */ }
+            rxBuf = rxBuf.slice(i + 1);
+            i = -1; start = -1;
+        }
+    }
+    if (rxBuf.length > 1024) rxBuf = rxBuf.slice(-512);
+}
+
+/* ── BLE connect / disconnect ────────────────────────────────────────── */
+
+async function connect() {
+    if (!navigator.bluetooth) {
+        log('Web Bluetooth not available — use Chrome or Edge');
+        return;
+    }
+    try {
+        log('Scanning for RTK devices…');
+        device = await navigator.bluetooth.requestDevice({
+            filters: [{ namePrefix: 'RTK' }],
+            optionalServices: [NUS_SVC]
+        });
+        device.addEventListener('gattserverdisconnected', onDisconnect);
+
+        log(`Connecting to ${device.name}…`);
+        const server = await device.gatt.connect();
+        const svc    = await server.getPrimaryService(NUS_SVC);
+        const txChar = await svc.getCharacteristic(NUS_TX);
+        txChar.addEventListener('characteristicvaluechanged', onNotify);
+        await txChar.startNotifications();
+
+        $('connStatus').textContent = device.name;
+        $('connStatus').className   = 'connected';
+        $('connectBtn').textContent = 'Disconnect';
+        $('connectBtn').className   = 'danger';
+        log(`Connected to ${device.name} — waiting for data…`);
+    } catch (e) {
+        log(`Error: ${e.message}`);
+        device = null;
+    }
+}
+
+function onDisconnect() {
+    log('Disconnected');
+    $('connStatus').textContent = 'Not connected';
+    $('connStatus').className   = '';
+    $('connectBtn').textContent = 'Connect';
+    $('connectBtn').className   = '';
+    device = null;
+}
+
+/* ── UI event listeners ──────────────────────────────────────────────── */
+
+$('connectBtn').addEventListener('click', async () => {
+    if (device && device.gatt.connected)
+        device.gatt.disconnect();
+    else
+        await connect();
+});
+
+$('copyCoords').addEventListener('click', () => {
+    if (!lastRovr) return;
+    const text = `${lastRovr.lat.toFixed(7)}, ${lastRovr.lon.toFixed(7)}`;
+    navigator.clipboard.writeText(text)
+        .then(() => log(`Copied: ${text}`))
+        .catch(() => log(`Copy failed — try: ${text}`));
+});
+</script>
+</body>
+</html>

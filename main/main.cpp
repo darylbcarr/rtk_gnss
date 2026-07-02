@@ -22,7 +22,9 @@
 #include "base_app.h"
 #include "ups.h"
 #include "sdcard.h"
+#include "ble_uart.h"
 #include <cstring>
+#include <stdio.h>
 
 static const char *TAG = "app";
 
@@ -187,6 +189,7 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "Device mode: %s", mode == DEVICE_MODE_BASE ? "BASE" : "ROVER");
 
     ui_init(mode);
+    ble_uart_init(mode == DEVICE_MODE_BASE ? "RTK-BASE" : "RTK-ROVER");
 
     static const sdlog_cfg_t sd_cfg = {
         .pin_mosi = SD_MOSI_PIN,
@@ -326,11 +329,11 @@ extern "C" void app_main(void)
 
         ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes);
 
-        /* Base mode: ui runs at ~100 ms; SD log written every 10 s via timestamp. */
+        /* Base mode: ui runs at ~100 ms; SD log and BLE status sent every 1 s. */
         if (mode == DEVICE_MODE_BASE) {
             static uint32_t s_base_log_s = 0;
             uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-            if (now_s - s_base_log_s >= 10) {
+            if (now_s - s_base_log_s >= 1) {
                 s_base_log_s = now_s;
                 uint32_t rtcm_frames, rtcm_1005, rtcm_errors;
                 base_app_get_rtcm_stats(&rtcm_frames, &rtcm_1005, &rtcm_errors);
@@ -339,19 +342,53 @@ extern "C" void app_main(void)
                 const char *state_str = (bst == BASE_STATE_SURVEY_IN)   ? "SVIN"
                                       : (bst == BASE_STATE_BROADCASTING) ? "BCAST"
                                                                           : "IDLE";
-                sdlog_writef("%lu,%s,%lu,%.2f,%d,%lu,%lu,%lu,%.2f,%d,%.0f\n",
-                             (unsigned long)now_s, state_str,
-                             (unsigned long)sv.dur_s, sv.mean_acc_m, sv.valid,
-                             (unsigned long)rtcm_frames,
-                             (unsigned long)rtcm_1005,
-                             (unsigned long)rtcm_errors,
-                             ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
+                /* SD log every 10 s */
+                if (now_s % 10 == 0) {
+                    sdlog_writef("%lu,%s,%lu,%.2f,%d,%lu,%lu,%lu,%.2f,%d,%.0f\n",
+                                 (unsigned long)now_s, state_str,
+                                 (unsigned long)sv.dur_s, sv.mean_acc_m, sv.valid,
+                                 (unsigned long)rtcm_frames,
+                                 (unsigned long)rtcm_1005,
+                                 (unsigned long)rtcm_errors,
+                                 ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
+                }
+                /* BLE status notification every 1 s */
+                if (ble_uart_connected()) {
+                    char ble_buf[256];
+                    int n = snprintf(ble_buf, sizeof(ble_buf),
+                        "{\"m\":\"B\",\"st\":\"%s\",\"dur\":%lu,\"acc\":%.2f,\"ok\":%d,"
+                        "\"rtcm\":%lu,\"a1005\":%lu,\"err\":%lu,"
+                        "\"v\":%.2f,\"pct\":%d,\"chg\":%s}",
+                        state_str,
+                        (unsigned long)sv.dur_s, sv.mean_acc_m, (int)sv.valid,
+                        (unsigned long)rtcm_frames, (unsigned long)rtcm_1005,
+                        (unsigned long)rtcm_errors,
+                        ups_d.bus_voltage_V, ups_d.percent,
+                        ups_d.charging ? "true" : "false");
+                    ble_uart_send(ble_buf, (size_t)n);
+                }
             }
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
         /* Rover-only diagnostics ── */
+
+        /* BLE: send position each GNSS epoch (~1 Hz) */
+        if (ble_uart_connected()) {
+            char ble_buf[256];
+            int n = snprintf(ble_buf, sizeof(ble_buf),
+                "{\"m\":\"R\",\"fix\":%d,\"rtk\":%d,\"sv\":%d,"
+                "\"lat\":%.7f,\"lon\":%.7f,\"alt\":%.2f,"
+                "\"ha\":%.4f,\"va\":%.4f,\"pdop\":%.1f,\"age\":%.1f,"
+                "\"v\":%.2f,\"pct\":%d,\"chg\":%s}",
+                pvt.fix_type, pvt.carr_soln, pvt.num_sv,
+                pvt.lat, pvt.lon, pvt.alt_msl,
+                pvt.h_acc, pvt.v_acc, pvt.pdop, pvt.diff_age_s,
+                ups_d.bus_voltage_V, ups_d.percent,
+                ups_d.charging ? "true" : "false");
+            ble_uart_send(ble_buf, (size_t)n);
+        }
 
         /* SD log — on carr_soln change or every 10 s */
         {
