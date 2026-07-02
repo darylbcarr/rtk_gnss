@@ -9,8 +9,8 @@
 extern "C" {
 #endif
 
-#define DISPLAY_COLS  21   /* characters per row (6px wide font) */
-#define DISPLAY_ROWS   8   /* rows (8px tall font)                */
+#define DISPLAY_COLS  21   /* characters per row at 6 px/char */
+#define DISPLAY_ROWS   7   /* visible text rows at 9 px/row (8px glyph + 1px gap) */
 
 /* Attach SSD1306 128x64 to an already-created I2C master bus.
  * Typical I2C address: 0x3C (SA0 pin low) or 0x3D (SA0 pin high). */

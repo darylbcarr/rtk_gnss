@@ -7,13 +7,14 @@
 
 static const char *TAG = "display";
 
-#define SSD1306_W  128
-#define SSD1306_H   64
-#define SSD1306_PAGES (SSD1306_H / 8)   /* 8 */
+#define SSD1306_W     128
+#define SSD1306_H      64
+#define SSD1306_PAGES  (SSD1306_H / 8)   /* 8 hardware pages */
 
-#define FONT_W  5   /* glyph columns */
-#define FONT_SP 1   /* inter-character spacing */
-#define CHAR_W  (FONT_W + FONT_SP)  /* 6 px per character */
+#define FONT_W       5   /* glyph columns */
+#define FONT_SP      1   /* inter-character spacing column */
+#define CHAR_W       (FONT_W + FONT_SP)   /* 6 px per character */
+#define ROW_STRIDE   9   /* 8-pixel glyph + 1-pixel inter-row gap */
 
 static i2c_master_dev_handle_t s_dev;
 static i2c_master_bus_handle_t s_bus;
@@ -181,15 +182,28 @@ void display_clear(void)
 
 void display_puts(uint8_t col, uint8_t row, const char *s)
 {
-    if (row >= SSD1306_PAGES) return;
-    int x = col * CHAR_W;
+    if (row >= DISPLAY_ROWS) return;
+    /* Convert logical row to pixel position; rows are 9px apart (8px glyph + 1px gap).
+     * A row starting at y=n*9 may straddle two SSD1306 pages when n*9 is not a
+     * multiple of 8.  Split each glyph byte across both pages with bit-shifting.
+     * Callers must call display_clear() before the first puts of each frame so
+     * that |= accumulation starts from a zeroed framebuffer. */
+    int y0 = row * ROW_STRIDE;
+    int p0 = y0 >> 3;          /* first SSD1306 page */
+    int b  = y0 & 7;           /* bit offset within that page (0 = page top) */
+    int x  = col * CHAR_W;
+
     while (*s && x + CHAR_W <= SSD1306_W) {
         uint8_t c = (uint8_t)*s++;
         if (c < 0x20 || c > 0x7F) c = 0x20;
         const uint8_t *glyph = s_font[c - 0x20];
-        for (int i = 0; i < FONT_W; i++)
-            s_fb[row][x + i] = glyph[i];
-        s_fb[row][x + FONT_W] = 0x00;   /* spacing column */
+        for (int i = 0; i < FONT_W; i++) {
+            uint8_t v = glyph[i];
+            s_fb[p0][x + i]     |= (uint8_t)(v << b);
+            if (b && p0 + 1 < SSD1306_PAGES)
+                s_fb[p0 + 1][x + i] |= (uint8_t)(v >> (8 - b));
+        }
+        /* spacing column stays 0 — already cleared by display_clear() */
         x += CHAR_W;
     }
 }

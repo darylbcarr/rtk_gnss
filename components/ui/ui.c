@@ -75,12 +75,10 @@ static const char *mode_str(device_mode_t m)
 static void render_rover_live(const gnss_pvt_t *pvt, const ups_data_t *ups,
                               uint32_t lora_rx_b)
 {
-    /* Line 0: fix quality + satellite count */
     display_printf(0, 0, "%-8s SV:%-2u",
                    fix_label(pvt->fix_type, pvt->carr_soln, pvt->gga_quality),
                    pvt->num_sv);
 
-    /* Lines 1-2: position */
     display_printf(0, 1, "%.7f%c",
                    pvt->lat >= 0 ?  pvt->lat : -pvt->lat,
                    pvt->lat >= 0 ? 'N' : 'S');
@@ -88,10 +86,8 @@ static void render_rover_live(const gnss_pvt_t *pvt, const ups_data_t *ups,
                    pvt->lon >= 0 ?  pvt->lon : -pvt->lon,
                    pvt->lon >= 0 ? 'E' : 'W');
 
-    /* Line 3: altitude + horizontal accuracy */
     display_printf(0, 3, "Alt:%7.2fm hA:%.3f", pvt->alt_msl, pvt->h_acc);
 
-    /* Line 4: RTK correction flow — ARP received, correction age, RX bytes */
     {
         bool     arp = gnss_rtcm_arp_seen();
         uint32_t kb  = lora_rx_b / 1024;
@@ -103,10 +99,8 @@ static void render_rover_live(const gnss_pvt_t *pvt, const ups_data_t *ups,
                            arp ? 'Y' : 'N', (unsigned long)kb);
     }
 
-    /* Line 5: dilution of precision + vertical accuracy */
     display_printf(0, 5, "PDOP:%-4.1f vAcc:%.3fm", pvt->pdop, pvt->v_acc);
 
-    /* Line 6: power */
     if (ups && ups->present)
         display_printf(0, 6, "%4.1fV %3d%% %+5.1fA %s",
                        ups->bus_voltage_V, ups->percent,
@@ -114,8 +108,6 @@ static void render_rover_live(const gnss_pvt_t *pvt, const ups_data_t *ups,
                        ups->charging ? "CHG" : "DSC");
     else
         display_puts(0, 6, "UPS:---             ");
-
-    display_printf(0, 7, "%-5s          [menu]", mode_str(s_mode));
 }
 
 static void render_base_live(const ups_data_t *ups)
@@ -125,7 +117,6 @@ static void render_base_live(const ups_data_t *ups)
     uint32_t frames, arpcnt, errors;
     base_app_get_rtcm_stats(&frames, &arpcnt, &errors);
 
-    /* Line 0: state banner */
     if (bst == BASE_STATE_SURVEY_IN)
         display_puts(0, 0, "BASE: SURVEY-IN      ");
     else if (bst == BASE_STATE_BROADCASTING)
@@ -133,8 +124,6 @@ static void render_base_live(const ups_data_t *ups)
     else
         display_puts(0, 0, "BASE: INIT           ");
 
-    /* Lines 1-2: survey-in snapshot.
-     * Live progress during SVIN; frozen convergence values during BCAST. */
     display_printf(0, 1, "T:%4lus  Acc:%6.2fm  ",
                    (unsigned long)sv.dur_s, sv.mean_acc_m);
     if (bst == BASE_STATE_SURVEY_IN)
@@ -146,24 +135,20 @@ static void render_base_live(const ups_data_t *ups)
     else
         display_puts(0, 2, "                     ");
 
-    /* Lines 3-4: RTCM stream health */
     display_printf(0, 3, "RTCM:%6lu  Err:%4lu",
                    (unsigned long)frames, (unsigned long)errors);
     display_printf(0, 4, "1005:%6lu ARP:%-3s",
                    (unsigned long)arpcnt, arpcnt > 0 ? "YES" : "NO");
 
-    display_puts(0, 5, "                     ");
-
-    /* Line 6: power */
     if (ups && ups->present)
-        display_printf(0, 6, "%4.1fV %3d%% %+5.1fA %s",
+        display_printf(0, 5, "%4.1fV %3d%% %+5.1fA %s",
                        ups->bus_voltage_V, ups->percent,
                        ups->current_mA / 1000.0f,
                        ups->charging ? "CHG" : "DSC");
     else
-        display_puts(0, 6, "UPS:---              ");
+        display_puts(0, 5, "UPS:---              ");
 
-    display_printf(0, 7, "%-5s          [menu]", mode_str(s_mode));
+    display_printf(0, 6, "%-5s          [menu]", mode_str(s_mode));
 }
 
 static void render_menu(void)
@@ -188,7 +173,6 @@ static void render_fix_detail(const gnss_pvt_t *pvt)
     display_printf(0, 4, "hAcc:  %.3f m", pvt->h_acc);
     display_printf(0, 5, "vAcc:  %.3f m", pvt->v_acc);
     display_printf(0, 6, "PDOP:  %-14.1f", pvt->pdop);
-    display_puts  (0, 7, " [press: back]       ");
 }
 
 static void render_mode_select(void)
@@ -199,8 +183,7 @@ static void render_mode_select(void)
     display_printf(0, 3, " %c ROVER             ", s_mode_sel == 0 ? '>' : ' ');
     display_printf(0, 4, " %c BASE STATION      ", s_mode_sel == 1 ? '>' : ' ');
     display_printf(0, 5, " %c Back              ", s_mode_sel == 2 ? '>' : ' ');
-    display_puts  (0, 6, "                     ");
-    display_puts  (0, 7, "   [press: select]   ");
+    display_puts  (0, 6, "   [press: select]   ");
 }
 
 /* ── Public API ──────────────────────────────────────────────────────── */
@@ -293,8 +276,7 @@ device_mode_t ui_select_mode_blocking(void)
         display_puts  (0, 3, "                     ");
         display_printf(0, 4, " %c ROVER             ", sel == 0 ? '>' : ' ');
         display_printf(0, 5, " %c BASE STATION      ", sel == 1 ? '>' : ' ');
-        display_puts  (0, 6, "                     ");
-        display_puts  (0, 7, "   [press: confirm]  ");
+        display_puts  (0, 6, "   [press: confirm]  ");
         display_flush();
 
         vTaskDelay(pdMS_TO_TICKS(50));

@@ -271,6 +271,7 @@ extern "C" void app_main(void)
 
     } else {
         /* Base: run survey-in then stream RTCM3 → LoRa */
+        display_clear();
         display_puts(0, 0, "BASE: SURVEY-IN");
         display_flush();
 
@@ -298,6 +299,7 @@ extern "C" void app_main(void)
         if (mode == DEVICE_MODE_ROVER) {
             if (!gnss_read_pvt(&pvt, 2000)) {
                 ESP_LOGW(TAG, "No GNSS data in 2 s — check antenna/wiring");
+                display_clear();
                 display_puts(0, 0, "GNSS TIMEOUT    ");
                 display_flush();
                 continue;
