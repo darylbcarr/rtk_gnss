@@ -14,7 +14,7 @@ static int s_sw_pin;
 static atomic_int    s_steps     = 0;
 static volatile bool s_raw_press = false;
 static TickType_t    s_last_press_tick = 0;
-#define DEBOUNCE_TICKS pdMS_TO_TICKS(50)
+#define DEBOUNCE_TICKS pdMS_TO_TICKS(500)
 
 /* ── Gray-code state machine ─────────────────────────────────────────
  * Both CLK and DT trigger on ANY edge. State = (clk<<1)|dt (0–3).

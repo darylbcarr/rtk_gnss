@@ -324,24 +324,28 @@ extern "C" void app_main(void)
 
         ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes);
 
-        /* Base mode: pace at 1 Hz (rover is paced by the GNSS epoch above). */
+        /* Base mode: ui runs at ~100 ms; SD log written every 10 s via timestamp. */
         if (mode == DEVICE_MODE_BASE) {
+            static uint32_t s_base_log_s = 0;
             uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-            uint32_t rtcm_frames, rtcm_1005, rtcm_errors;
-            base_app_get_rtcm_stats(&rtcm_frames, &rtcm_1005, &rtcm_errors);
-            gnss_svin_t sv  = base_app_get_svin();
-            base_state_t bst = base_app_get_state();
-            const char *state_str = (bst == BASE_STATE_SURVEY_IN)    ? "SVIN"
-                                  : (bst == BASE_STATE_BROADCASTING)  ? "BCAST"
-                                                                       : "IDLE";
-            sdlog_writef("%lu,%s,%lu,%.2f,%d,%lu,%lu,%lu,%.2f,%d,%.0f\n",
-                         (unsigned long)now_s, state_str,
-                         (unsigned long)sv.dur_s, sv.mean_acc_m, sv.valid,
-                         (unsigned long)rtcm_frames,
-                         (unsigned long)rtcm_1005,
-                         (unsigned long)rtcm_errors,
-                         ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
-            vTaskDelay(pdMS_TO_TICKS(10000));
+            if (now_s - s_base_log_s >= 10) {
+                s_base_log_s = now_s;
+                uint32_t rtcm_frames, rtcm_1005, rtcm_errors;
+                base_app_get_rtcm_stats(&rtcm_frames, &rtcm_1005, &rtcm_errors);
+                gnss_svin_t sv   = base_app_get_svin();
+                base_state_t bst = base_app_get_state();
+                const char *state_str = (bst == BASE_STATE_SURVEY_IN)   ? "SVIN"
+                                      : (bst == BASE_STATE_BROADCASTING) ? "BCAST"
+                                                                          : "IDLE";
+                sdlog_writef("%lu,%s,%lu,%.2f,%d,%lu,%lu,%lu,%.2f,%d,%.0f\n",
+                             (unsigned long)now_s, state_str,
+                             (unsigned long)sv.dur_s, sv.mean_acc_m, sv.valid,
+                             (unsigned long)rtcm_frames,
+                             (unsigned long)rtcm_1005,
+                             (unsigned long)rtcm_errors,
+                             ups_d.bus_voltage_V, ups_d.percent, ups_d.current_mA);
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
@@ -369,20 +373,21 @@ extern "C" void app_main(void)
         static uint8_t s_last_carr;
         if (pvt.carr_soln != s_last_carr) {
             static const char *const RTK_STR[] = { "NONE", "FLOAT", "FIX" };
-            ESP_LOGI(TAG, "RTK %s  sv=%u hAcc=%.3fm",
+            ESP_LOGI(TAG, "RTK %s  sv=%u vAcc=%.3fm hAcc=%.3fm",
                      RTK_STR[pvt.carr_soln < 3 ? pvt.carr_soln : 0],
-                     pvt.num_sv, pvt.h_acc);
-            sdlog_event("rover: RTK %s sv=%u h_acc=%.3fm diff_age=%.1fs",
+                     pvt.num_sv, pvt.v_acc, pvt.h_acc);
+            sdlog_event("rover: RTK %s sv=%u v_acc=%.3fm h_acc=%.3fm diff_age=%.1fs",
                         RTK_STR[pvt.carr_soln < 3 ? pvt.carr_soln : 0],
-                        pvt.num_sv, pvt.h_acc, pvt.diff_age_s);
+                        pvt.num_sv, pvt.v_acc, pvt.h_acc, pvt.diff_age_s);
             s_last_carr = pvt.carr_soln;
         }
 
         /* Log when EPE takes over from the HDOP fallback */
         static bool s_epe_logged;
         if (!s_epe_logged && gnss_epe_valid()) {
-            ESP_LOGI(TAG, "rover: first PQTMEPE received — h_acc now %.3fm (was HDOP×3 estimate)", pvt.h_acc);
-            sdlog_event("rover: first PQTMEPE received — h_acc now %.3fm (was HDOP estimate)", pvt.h_acc);
+            ESP_LOGI(TAG, "rover: first PQTMEPE received — v_acc=%.3fm h_acc=%.3fm (h_acc floor-clamped on A04S_RSA)",
+                     pvt.v_acc, pvt.h_acc);
+            sdlog_event("rover: first PQTMEPE — v_acc=%.3fm h_acc=%.3fm", pvt.v_acc, pvt.h_acc);
             s_epe_logged = true;
         }
 
@@ -390,9 +395,9 @@ extern "C" void app_main(void)
         static uint32_t s_pos_log_s;
         uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
         if (now_s - s_pos_log_s >= 30) {
-            ESP_LOGI(TAG, "pos sv=%u fix=%u rtk=%u lat=%.6f lon=%.6f hAcc=%.2fm pdop=%.1f",
+            ESP_LOGI(TAG, "pos sv=%u fix=%u rtk=%u lat=%.6f lon=%.6f vAcc=%.3fm pdop=%.1f",
                      pvt.num_sv, pvt.fix_type, pvt.carr_soln,
-                     pvt.lat, pvt.lon, pvt.h_acc, pvt.pdop);
+                     pvt.lat, pvt.lon, pvt.v_acc, pvt.pdop);
             s_pos_log_s = now_s;
         }
 

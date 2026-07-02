@@ -51,7 +51,7 @@ static int cur_menu_cnt(void)
 static screen_t      s_screen   = SCREEN_LIVE;
 static int           s_menu_sel = 0;
 static device_mode_t s_mode     = DEVICE_MODE_ROVER;
-static int           s_mode_sel = 0;    /* cursor in SCREEN_MODE_SELECT: 0=ROVER 1=BASE */
+static int           s_mode_sel = 0;    /* cursor in SCREEN_MODE_SELECT: 0=ROVER 1=BASE 2=Back */
 
 /* ── Shared helpers ──────────────────────────────────────────────────── */
 
@@ -198,7 +198,7 @@ static void render_mode_select(void)
     display_puts  (0, 2, "                     ");
     display_printf(0, 3, " %c ROVER             ", s_mode_sel == 0 ? '>' : ' ');
     display_printf(0, 4, " %c BASE STATION      ", s_mode_sel == 1 ? '>' : ' ');
-    display_puts  (0, 5, "                     ");
+    display_printf(0, 5, " %c Back              ", s_mode_sel == 2 ? '>' : ' ');
     display_puts  (0, 6, "                     ");
     display_puts  (0, 7, "   [press: select]   ");
 }
@@ -243,20 +243,24 @@ void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b)
 
     case SCREEN_MODE_SELECT:
         if (steps != 0)
-            s_mode_sel = (s_mode_sel + (steps > 0 ? 1 : -1) + 2) % 2;
+            s_mode_sel = (s_mode_sel + (steps > 0 ? 1 : -1) + 3) % 3;
         if (press) {
-            device_mode_t new_mode = (s_mode_sel == 0) ? DEVICE_MODE_ROVER
-                                                        : DEVICE_MODE_BASE;
-            if (new_mode == s_mode) {
+            if (s_mode_sel == 2) {
                 s_screen = SCREEN_MENU;
             } else {
-                config_set_device_mode(new_mode);
-                display_clear();
-                display_puts(0, 3, "      Saved!         ");
-                display_puts(0, 4, "    Rebooting...     ");
-                display_flush();
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                esp_restart();
+                device_mode_t new_mode = (s_mode_sel == 0) ? DEVICE_MODE_ROVER
+                                                            : DEVICE_MODE_BASE;
+                if (new_mode == s_mode) {
+                    s_screen = SCREEN_MENU;
+                } else {
+                    config_set_device_mode(new_mode);
+                    display_clear();
+                    display_puts(0, 3, "      Saved!         ");
+                    display_puts(0, 4, "    Rebooting...     ");
+                    display_flush();
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    esp_restart();
+                }
             }
         }
         break;
