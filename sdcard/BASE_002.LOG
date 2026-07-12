@@ -1,0 +1,3 @@
+time_s,event
+2,gnss: init OK — mode=BASE
+330,base: first RTCM 1005 in stream — position valid (stored or surveyed)
