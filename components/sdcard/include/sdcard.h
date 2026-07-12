@@ -38,6 +38,14 @@ void sdlog_flush(void);
 bool sdlog_is_ready(void);
 
 /*
+ * Delete every *.CSV and *.LOG file in the SD card root, except the pair
+ * currently open for this session (so live logging isn't interrupted).
+ * Not recursive — subdirectories are left untouched.
+ * Returns the number of files deleted, or -1 if the card isn't ready.
+ */
+int sdlog_clear_all(void);
+
+/*
  * Write a timestamped event line to the companion EVENT_NNN.LOG file.
  * Synchronous (blocks briefly on SD write) — intended for infrequent
  * diagnostic events, not high-rate data.  Safe to call from any task.

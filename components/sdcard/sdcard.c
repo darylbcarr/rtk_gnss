@@ -15,6 +15,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <strings.h>
 
 static const char *TAG = "sdlog";
 
@@ -29,6 +31,8 @@ static SemaphoreHandle_t      s_event_mutex   = NULL;
 static bool                   s_ready         = false;
 static MessageBufferHandle_t  s_msg_buf       = NULL;
 static volatile bool          s_flush_req     = false;
+static char                   s_file_path[64]  = {0};
+static char                   s_event_path[64] = {0};
 
 /* ── Background write task ─────────────────────────────────────────────── */
 
@@ -129,10 +133,12 @@ esp_err_t sdlog_init(const sdlog_cfg_t *cfg, const char *mode_name)
         ESP_LOGE(TAG, "Cannot open %s: %s", path, strerror(errno));
         return ESP_FAIL;
     }
+    strncpy(s_file_path, path, sizeof(s_file_path) - 1);
 
     /* Open companion event log */
     char event_path[64];
     snprintf(event_path, sizeof(event_path), "%s/%s_%03d.LOG", MOUNT_POINT, mode_name, num);
+    strncpy(s_event_path, event_path, sizeof(s_event_path) - 1);
     s_event_file  = fopen(event_path, "w");
     s_event_mutex = xSemaphoreCreateMutex();
     if (s_event_file) {
@@ -194,6 +200,47 @@ void sdlog_flush(void)
 bool sdlog_is_ready(void)
 {
     return s_ready;
+}
+
+static bool has_suffix_ci(const char *name, const char *suffix)
+{
+    size_t nlen = strlen(name), slen = strlen(suffix);
+    if (nlen < slen) return false;
+    return strcasecmp(name + nlen - slen, suffix) == 0;
+}
+
+int sdlog_clear_all(void)
+{
+    if (!s_ready) return -1;
+
+    DIR *dir = opendir(MOUNT_POINT);
+    if (!dir) {
+        ESP_LOGW(TAG, "Cannot open %s: %s", MOUNT_POINT, strerror(errno));
+        return -1;
+    }
+
+    int deleted = 0;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (!has_suffix_ci(ent->d_name, ".CSV") && !has_suffix_ci(ent->d_name, ".LOG"))
+            continue;
+
+        char path[sizeof(MOUNT_POINT) + sizeof(ent->d_name)];
+        snprintf(path, sizeof(path), "%s/%s", MOUNT_POINT, ent->d_name);
+
+        /* Don't delete the files this session is actively writing to. */
+        if (strcmp(path, s_file_path) == 0 || strcmp(path, s_event_path) == 0)
+            continue;
+
+        if (unlink(path) == 0)
+            deleted++;
+        else
+            ESP_LOGW(TAG, "Failed to delete %s: %s", path, strerror(errno));
+    }
+    closedir(dir);
+
+    ESP_LOGI(TAG, "Cleared %d log file(s)", deleted);
+    return deleted;
 }
 
 void sdlog_event(const char *fmt, ...)

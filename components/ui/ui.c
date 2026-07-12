@@ -5,6 +5,7 @@
 #include "ups.h"
 #include "gnss.h"
 #include "base_app.h"
+#include "sdcard.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -16,6 +17,7 @@ typedef enum {
     SCREEN_MENU,
     SCREEN_FIX_DETAIL,
     SCREEN_MODE_SELECT,
+    SCREEN_CLEAR_CONFIRM,
 } screen_t;
 
 typedef struct {
@@ -28,13 +30,15 @@ static device_mode_t s_mode;
 
 /* Rover has a "Fix detail" entry; Base omits it (no PVT in base mode). */
 static const menu_item_t s_rover_menu[] = {
-    { "Fix detail",  SCREEN_FIX_DETAIL  },
-    { "Device mode", SCREEN_MODE_SELECT },
-    { "Exit",        SCREEN_LIVE        },
+    { "Fix detail",  SCREEN_FIX_DETAIL    },
+    { "Device mode", SCREEN_MODE_SELECT   },
+    { "Clear logs",  SCREEN_CLEAR_CONFIRM },
+    { "Exit",        SCREEN_LIVE          },
 };
 static const menu_item_t s_base_menu[] = {
-    { "Device mode", SCREEN_MODE_SELECT },
-    { "Exit",        SCREEN_LIVE        },
+    { "Device mode", SCREEN_MODE_SELECT   },
+    { "Clear logs",  SCREEN_CLEAR_CONFIRM },
+    { "Exit",        SCREEN_LIVE          },
 };
 
 static const menu_item_t *cur_menu(void)
@@ -52,6 +56,7 @@ static screen_t      s_screen   = SCREEN_LIVE;
 static int           s_menu_sel = 0;
 static device_mode_t s_mode     = DEVICE_MODE_ROVER;
 static int           s_mode_sel = 0;    /* cursor in SCREEN_MODE_SELECT: 0=ROVER 1=BASE 2=Back */
+static int           s_clear_sel = 1;   /* cursor in SCREEN_CLEAR_CONFIRM: 0=Yes 1=No — defaults to No */
 
 /* ── Shared helpers ──────────────────────────────────────────────────── */
 
@@ -186,6 +191,17 @@ static void render_mode_select(void)
     display_puts  (0, 6, "   [press: select]   ");
 }
 
+static void render_clear_confirm(void)
+{
+    display_puts  (0, 0, "   CLEAR LOGS?       ");
+    display_puts  (0, 1, "  Deletes all .CSV   ");
+    display_puts  (0, 2, "  and .LOG files     ");
+    display_puts  (0, 3, "                     ");
+    display_printf(0, 4, " %c Yes, delete       ", s_clear_sel == 0 ? '>' : ' ');
+    display_printf(0, 5, " %c No, cancel        ", s_clear_sel == 1 ? '>' : ' ');
+    display_puts  (0, 6, "   [press: select]   ");
+}
+
 /* ── Public API ──────────────────────────────────────────────────────── */
 
 void ui_init(device_mode_t mode)
@@ -215,6 +231,8 @@ void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b)
             screen_t target = cur_menu()[s_menu_sel].target;
             if (target == SCREEN_MODE_SELECT)
                 s_mode_sel = (s_mode == DEVICE_MODE_BASE) ? 1 : 0;
+            else if (target == SCREEN_CLEAR_CONFIRM)
+                s_clear_sel = 1;   /* always default to No */
             s_screen = target;
         }
         break;
@@ -222,6 +240,24 @@ void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b)
 
     case SCREEN_FIX_DETAIL:
         if (press) s_screen = SCREEN_MENU;
+        break;
+
+    case SCREEN_CLEAR_CONFIRM:
+        if (steps != 0)
+            s_clear_sel = (s_clear_sel + (steps > 0 ? 1 : -1) + 2) % 2;
+        if (press) {
+            if (s_clear_sel == 0) {
+                int n = sdlog_clear_all();
+                display_clear();
+                if (n >= 0)
+                    display_printf(0, 3, "  Cleared %d file%s   ", n, n == 1 ? "" : "s");
+                else
+                    display_puts(0, 3, "   Clear failed!     ");
+                display_flush();
+                vTaskDelay(pdMS_TO_TICKS(1200));
+            }
+            s_screen = SCREEN_MENU;
+        }
         break;
 
     case SCREEN_MODE_SELECT:
@@ -257,9 +293,10 @@ void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b)
         else
             render_rover_live(pvt, ups, lora_rx_b);
         break;
-    case SCREEN_MENU:        render_menu();           break;
-    case SCREEN_FIX_DETAIL:  render_fix_detail(pvt); break;
-    case SCREEN_MODE_SELECT: render_mode_select();    break;
+    case SCREEN_MENU:          render_menu();           break;
+    case SCREEN_FIX_DETAIL:    render_fix_detail(pvt);  break;
+    case SCREEN_MODE_SELECT:   render_mode_select();    break;
+    case SCREEN_CLEAR_CONFIRM: render_clear_confirm();  break;
     }
     display_flush();
 }
