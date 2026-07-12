@@ -78,7 +78,6 @@ static void broadcast_rtcm(void)
     uint32_t        bytes        = 0;
     uint32_t        errors       = 0;
     uint32_t        last_log     = (uint32_t)(esp_timer_get_time() / 1000);
-    uint32_t        last_svin_ms = 0;
     bool            saw_arb      = false;   /* saw 1005 or 1006 — base has valid position */
 
     /* Track unique outbound RTCM types — first occurrence logged at INFO */
@@ -102,11 +101,6 @@ static void broadcast_rtcm(void)
                 last_log = now;
             }
 
-            /* Poll LC29H for survey-in progress every 10 s */
-            if (now - last_svin_ms >= 10000) {
-                gnss_poll_svin_status();
-                last_svin_ms = now;
-            }
         }
 
         /* Drain any fresh svin status that arrived since last poll */
