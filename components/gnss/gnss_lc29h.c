@@ -24,7 +24,8 @@ static const char *TAG = "gnss";
 
 static uart_port_t       s_uart;
 static bool              s_booted_in_base;   /* RTCM detected at init — saved config intact */
-static bool              s_epe_received;     /* true once PQTMEPE sentence arrives */
+static bool              s_epe_received;     /* true once PQTMEPE with valid VEPE arrives */
+static bool              s_epe_raw_logged;   /* one-shot: raw PQTMEPE sentence logged */
 static int               s_pair513_ack;      /* 0=pending, 1=OK, -1=ERROR */
 static int               s_nreset_pin = -1;  /* GPIO wired to NRESET, or -1 if not connected */
 static SemaphoreHandle_t s_tx_mutex;
@@ -214,16 +215,30 @@ static void parse_rmc(char *line)
 }
 
 /* $PQTMEPE,<HEPE>,<VEPE>,<SEPE>,<3DEPE>*cs
- * HEPE/VEPE are 1-sigma position errors in metres from the module's Kalman
- * filter.  Unlike HDOP*UERE, these reflect actual RTK convergence quality. */
+ * On LC29H RSA A04S_RSA firmware: HEPE is always "2" (integer, floor-clamped).
+ * VEPE is empty when no fix; it populates correctly once a solution exists.
+ * Do not mark s_epe_received until VEPE is non-zero so the parse_gga HDOP
+ * fallback remains active while the module has no valid solution. */
 static void parse_epe(char *line, gnss_pvt_t *pvt)
 {
     char *f[6];
-    if (nmea_split(line, f, 6) < 3) return;
+    int nf = nmea_split(line, f, 6);
+    if (nf < 3) return;
     float hepe = atof(f[1]);
     float vepe = atof(f[2]);
-    if (hepe > 0.0f) {
-        pvt->h_acc     = hepe;
+
+    if (!s_epe_raw_logged) {
+        ESP_LOGI(TAG, "PQTMEPE raw: HEPE=%s VEPE=%s f3=%s (%d fields)",
+                 f[1], f[2], nf >= 4 ? f[3] : "-", nf);
+        s_epe_raw_logged = true;
+    }
+
+    /* Always capture HEPE (even the firmware floor value). */
+    if (hepe > 0.0f)
+        pvt->h_acc = hepe;
+
+    /* Only use VEPE — and suppress the HDOP fallback — when it is valid. */
+    if (vepe > 0.0f) {
         pvt->v_acc     = vepe;
         s_epe_received = true;
     }
