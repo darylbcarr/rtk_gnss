@@ -11,6 +11,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
+#include <sys/time.h>
 
 static const char *TAG = "gnss";
 
@@ -157,6 +159,58 @@ static void parse_gsa(char *line, gnss_pvt_t *pvt)
     char *f[20];
     if (nmea_split(line, f, 20) >= 16)
         pvt->pdop = atof(f[15]);
+}
+
+/* Days from 1970-01-01 to y-m-d (UTC, Gregorian).  Howard Hinnant's
+ * days_from_civil algorithm — used instead of timegm(), which this
+ * toolchain's newlib does not provide. */
+static long days_from_civil(int y, int m, int d)
+{
+    y -= m <= 2;
+    long era      = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe  = (unsigned)(y - era * 400);
+    unsigned doy  = (153u * (unsigned)(m + (m > 2 ? -3 : 9)) + 2u) / 5u + (unsigned)d - 1u;
+    unsigned doe  = yoe * 365u + yoe / 4u - yoe / 100u + doy;
+    return era * 146097L + (long)doe - 719468L;
+}
+
+/* $GxRMC,hhmmss.ss,A,llll.ll,a,yyyyy.yy,a,x.x,x.x,ddmmyy,...*cs
+ * Only sentence in the default output set that carries the date; used
+ * solely to set the system clock from GNSS UTC so SD file timestamps
+ * are accurate.  Position/velocity fields are ignored — GGA covers those. */
+static bool s_time_synced = false;
+
+static void parse_rmc(char *line)
+{
+    char *f[16];
+    int nf = nmea_split(line, f, 16);
+    if (nf < 10) return;
+    if (f[2][0] != 'A') return;   /* receiver reports time/date not valid yet */
+    if (strlen(f[1]) < 6 || strlen(f[9]) < 6) return;
+
+    struct tm tm = { 0 };
+    tm.tm_hour = (f[1][0]-'0')*10 + (f[1][1]-'0');
+    tm.tm_min  = (f[1][2]-'0')*10 + (f[1][3]-'0');
+    tm.tm_sec  = (f[1][4]-'0')*10 + (f[1][5]-'0');
+    tm.tm_mday = (f[9][0]-'0')*10 + (f[9][1]-'0');
+    tm.tm_mon  = (f[9][2]-'0')*10 + (f[9][3]-'0') - 1;
+    tm.tm_year = (f[9][4]-'0')*10 + (f[9][5]-'0') + 100;  /* 2-digit year -> 20xx */
+
+    if (tm.tm_mday < 1 || tm.tm_mday > 31 || tm.tm_mon < 0 || tm.tm_mon > 11)
+        return;
+
+    long days = days_from_civil(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    time_t utc = (time_t)days * 86400 + tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
+
+    struct timeval tv = { .tv_sec = utc, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+
+    if (!s_time_synced) {
+        s_time_synced = true;
+        ESP_LOGI(TAG, "System clock synced from GNSS: %04d-%02d-%02d %02d:%02d:%02d UTC",
+                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                 tm.tm_hour, tm.tm_min, tm.tm_sec);
+    }
 }
 
 /* $PQTMEPE,<HEPE>,<VEPE>,<SEPE>,<3DEPE>*cs
@@ -357,6 +411,8 @@ static void gnss_reader_task(void *arg)
                 xQueueOverwrite(s_pvt_queue, &pvt);
             } else if (strncmp(type, "GSA", 3) == 0) {
                 parse_gsa(nmea_buf, &pvt);
+            } else if (strncmp(type, "RMC", 3) == 0) {
+                parse_rmc(nmea_buf);
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
                 /* Autonomous output: $PQTMSVINSTATUS,active,valid,obs,...,meanAcc */
                 parse_svinstatus(nmea_buf, 1);
@@ -527,6 +583,8 @@ esp_err_t gnss_init(uart_port_t port, int tx_pin, int rx_pin, int nreset_pin,
         vTaskDelay(pdMS_TO_TICKS(200));
         pqtm_send("PQTMCFGMSGRATE,W,PQTMEPE,1,2"); /* enable $PQTMEPE output every epoch */
         vTaskDelay(pdMS_TO_TICKS(100));
+        pqtm_send("PAIR062,4,1");        /* enable $GxRMC — carries UTC date, used to set system clock */
+        vTaskDelay(pdMS_TO_TICKS(100));
         pqtm_send("PQTMSAVEPAR");         /* persist rover config to flash */
         vTaskDelay(pdMS_TO_TICKS(500));
         pqtm_send("PQTMCFGRTK,R");       /* read back — expect OK,1,1 */
@@ -688,6 +746,8 @@ esp_err_t gnss_start_survey_in(uint32_t min_dur_s, float acc_limit_m)
 #else
     pqtm_send("PAIR436,0");   /* disable ephemeris — rover tracks its own */
 #endif
+    vTaskDelay(pdMS_TO_TICKS(200));
+    pqtm_send("PAIR062,4,1"); /* enable $GxRMC — carries UTC date, used to set system clock */
     vTaskDelay(pdMS_TO_TICKS(200));
 
     /* ── Survey-in configuration ────────────────────────────────────────────── */
