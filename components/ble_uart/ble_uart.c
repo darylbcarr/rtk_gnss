@@ -84,12 +84,27 @@ static int gap_event(struct ble_gap_event *event, void *arg);
 
 static void start_advertising(void)
 {
+    /*
+     * Primary advertisement: flags + the NUS service UUID. Apps that
+     * identify "generic NMEA over BLE" GNSS receivers (e.g. SW Maps) filter
+     * scan results on this UUID rather than listing every nearby BLE
+     * device, so it must be in the advertisement itself, not discovered
+     * only after connecting. Legacy adv PDUs cap at 31 bytes and a 128-bit
+     * UUID field already takes 18 of them, so the name goes in the
+     * separate scan-response packet instead of here.
+     */
     struct ble_hs_adv_fields f = {0};
-    f.flags            = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    f.name             = (const uint8_t *)s_dev_name;
-    f.name_len         = (uint8_t)strlen(s_dev_name);
-    f.name_is_complete = 1;
+    f.flags              = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    f.uuids128            = &s_svc_uuid;
+    f.num_uuids128        = 1;
+    f.uuids128_is_complete = 1;
     ble_gap_adv_set_fields(&f);
+
+    struct ble_hs_adv_fields rsp = {0};
+    rsp.name             = (const uint8_t *)s_dev_name;
+    rsp.name_len         = (uint8_t)strlen(s_dev_name);
+    rsp.name_is_complete = 1;
+    ble_gap_adv_rsp_set_fields(&rsp);
 
     struct ble_gap_adv_params ap = {0};
     ap.conn_mode = BLE_GAP_CONN_MODE_UND;

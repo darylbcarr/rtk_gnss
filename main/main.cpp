@@ -131,6 +131,27 @@ static void rtcm_relay_task(void *arg)
     }
 }
 
+/* ── BLE NMEA passthrough (rover) ────────────────────────────────────── */
+
+/*
+ * Forwards raw GGA/RMC/GSA sentences to the BLE NUS TX characteristic so
+ * standard NMEA-consuming apps (e.g. SW Maps as a generic Bluetooth LE
+ * GNSS receiver) can use this device directly. Shares the same
+ * characteristic as the JSON telemetry sent in the main loop below — NMEA
+ * text contains no '{'/'}' so the web page's JSON scanner silently skips
+ * it, and NMEA parsers silently skip the JSON line, so both coexist.
+ */
+static void ble_nmea_passthrough(const char *sentence, size_t len)
+{
+    if (!ble_uart_connected()) return;
+    char buf[96];
+    if (len + 2 >= sizeof(buf)) return;   /* NMEA sentences are <= 82 chars */
+    memcpy(buf, sentence, len);
+    buf[len]     = '\r';
+    buf[len + 1] = '\n';
+    ble_uart_send(buf, len + 2);
+}
+
 /* ── app_main ────────────────────────────────────────────────────────── */
 
 extern "C" void app_main(void)
@@ -232,6 +253,7 @@ extern "C" void app_main(void)
         int ack = gnss_epe_ack();
         sdlog_event("gnss: PQTMCFGMSGRATE (EPE enable) ack=%s",
                     ack == 1 ? "OK" : ack == -1 ? "ERROR" : "no-response");
+        gnss_set_nmea_passthrough_cb(ble_nmea_passthrough);
     }
 
     /* ── Mode-specific transport ──── */

@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include "driver/uart.h"
 #include "esp_err.h"
 
@@ -97,6 +98,16 @@ int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms);
 
 /* True once a $PQTMEPE sentence has been received (actual EPE in use). */
 bool gnss_epe_valid(void);
+
+/*
+ * Register a callback invoked with each raw, checksum-valid GGA/RMC/GSA
+ * sentence as received from the module — '$' through the checksum, no
+ * CR/LF, null-terminated. Intended for forwarding standard NMEA to
+ * external consumers (e.g. BLE for GIS apps) without duplicating LC29H
+ * sentence parsing outside gnss/. Pass NULL to disable.
+ */
+typedef void (*gnss_nmea_cb_t)(const char *sentence, size_t len);
+void gnss_set_nmea_passthrough_cb(gnss_nmea_cb_t cb);
 
 /*
  * PQTMCFGMSGRATE acknowledgement status for PQTMEPE enable command.

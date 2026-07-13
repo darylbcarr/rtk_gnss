@@ -42,6 +42,8 @@ static bool              s_svin_updated;
 /* RTCM ARP station ID seen by rover (0xFFFF = none yet) */
 static uint16_t s_rtcm_arp_sid = 0xFFFFu;
 
+static gnss_nmea_cb_t s_nmea_cb = NULL;  /* raw GGA/RMC/GSA passthrough */
+
 /* ── NMEA helpers ────────────────────────────────────────────────────── */
 
 static bool nmea_valid(const char *line)
@@ -421,12 +423,18 @@ static void gnss_reader_task(void *arg)
             /* Sentence type at chars [3..5] (any 2-letter talker) */
             const char *type = nmea_buf + 3;
             if (strncmp(type, "GGA", 3) == 0) {
+                /* parse_gga/parse_gsa/parse_rmc mutate the buffer in place
+                 * (nmea_split replaces ',' with '\0'), so passthrough must
+                 * fire on the pristine text before parsing, not after. */
+                if (s_nmea_cb) s_nmea_cb(nmea_buf, strlen(nmea_buf));
                 parse_gga(nmea_buf, &pvt);
                 /* Post on every GGA; GSA PDOP carries over */
                 xQueueOverwrite(s_pvt_queue, &pvt);
             } else if (strncmp(type, "GSA", 3) == 0) {
+                if (s_nmea_cb) s_nmea_cb(nmea_buf, strlen(nmea_buf));
                 parse_gsa(nmea_buf, &pvt);
             } else if (strncmp(type, "RMC", 3) == 0) {
+                if (s_nmea_cb) s_nmea_cb(nmea_buf, strlen(nmea_buf));
                 parse_rmc(nmea_buf);
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
                 /* Autonomous output: $PQTMSVINSTATUS,active,valid,obs,...,meanAcc */
@@ -850,3 +858,5 @@ int gnss_read_rtcm(uint8_t *buf, size_t max_len, uint32_t timeout_ms)
 
 bool gnss_epe_valid(void) { return s_epe_received; }
 int  gnss_epe_ack(void)   { return s_pair513_ack; }
+
+void gnss_set_nmea_passthrough_cb(gnss_nmea_cb_t cb) { s_nmea_cb = cb; }
