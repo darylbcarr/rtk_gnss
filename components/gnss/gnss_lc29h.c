@@ -247,6 +247,44 @@ static void parse_epe(char *line, gnss_pvt_t *pvt)
 }
 
 /*
+ * Build and forward a synthetic $GPGST from pvt->h_acc/v_acc.
+ *
+ * The LC29H RSA firmware variant does not emit real $GST (error-ellipse)
+ * sentences at all — only GGA/GSA/GSV/RMC are available. Apps like SW Maps
+ * read GST for horizontal/vertical accuracy display and show N/A without
+ * it. h_acc/v_acc are already the best estimate we have (PQTMEPE, or the
+ * HDOP-scaled fallback before EPE arrives — see parse_epe), so approximate
+ * GST's lat/lon/alt error fields from them rather than leave it blank.
+ * Uses pvt->i_tow (already parsed from the GGA time field) to keep the
+ * sentence's UTC time aligned with the fix it describes.
+ */
+static void emit_synthetic_gst(const gnss_pvt_t *pvt)
+{
+    if (!s_nmea_cb || !pvt->gnss_fix_ok) return;
+
+    uint32_t ms = pvt->i_tow;
+    int hh = (int)(ms / 3600000);
+    int mm = (int)((ms / 60000) % 60);
+    int ss = (int)((ms / 1000) % 60);
+    int cs = (int)((ms % 1000) / 10);
+
+    char body[80];
+    int n = snprintf(body, sizeof(body),
+        "GPGST,%02d%02d%02d.%02d,,,,,%.3f,%.3f,%.3f",
+        hh, mm, ss, cs, pvt->h_acc, pvt->h_acc, pvt->v_acc);
+    if (n <= 0 || (size_t)n >= sizeof(body)) return;
+
+    uint8_t cksum = 0;
+    for (int i = 0; i < n; i++) cksum ^= (uint8_t)body[i];
+
+    char sentence[96];
+    int total = snprintf(sentence, sizeof(sentence), "$%s*%02X", body, cksum);
+    if (total <= 0 || (size_t)total >= sizeof(sentence)) return;
+
+    s_nmea_cb(sentence, (size_t)total);
+}
+
+/*
  * Parse either format of SVINSTATUS into s_svin.
  *
  * Autonomous output: $PQTMSVINSTATUS,active,valid,obs,meanX,meanY,meanZ,meanAcc*cs
@@ -430,12 +468,19 @@ static void gnss_reader_task(void *arg)
                 parse_gga(nmea_buf, &pvt);
                 /* Post on every GGA; GSA PDOP carries over */
                 xQueueOverwrite(s_pvt_queue, &pvt);
+                /* Synthetic $GPGST right after its matching GGA — LC29H RSA
+                 * firmware never emits a real one (see emit_synthetic_gst). */
+                emit_synthetic_gst(&pvt);
             } else if (strncmp(type, "GSA", 3) == 0) {
                 if (s_nmea_cb) s_nmea_cb(nmea_buf, strlen(nmea_buf));
                 parse_gsa(nmea_buf, &pvt);
             } else if (strncmp(type, "RMC", 3) == 0) {
                 if (s_nmea_cb) s_nmea_cb(nmea_buf, strlen(nmea_buf));
                 parse_rmc(nmea_buf);
+            } else if (strncmp(type, "GSV", 3) == 0) {
+                /* Raw passthrough only — not parsed/used internally, just
+                 * forwarded so BLE clients (e.g. SW Maps) get a skyplot. */
+                if (s_nmea_cb) s_nmea_cb(nmea_buf, strlen(nmea_buf));
             } else if (strncmp(nmea_buf + 1, "PQTMSVINSTATUS", 14) == 0) {
                 /* Autonomous output: $PQTMSVINSTATUS,active,valid,obs,...,meanAcc */
                 parse_svinstatus(nmea_buf, 1);
