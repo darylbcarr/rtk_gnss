@@ -66,6 +66,17 @@ env/
 .ccls-cache/
 compile_commands.json
 
+# SD card captures (raw GNSS session data — archive intentionally with git add -f
+# when a session is worth keeping, same as past Test1-4/indoor_test commits)
+sdcard/**/*.CSV
+sdcard/**/*.LOG
+sdcard/**/*_MONITOR.txt
+
+# Logic analyzer captures/sessions
+*.sr
+*.pvs
+Anylyze_setup
+
 # Windows specific
 Thumbs.db
 ehthumbs.db
