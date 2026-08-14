@@ -17,6 +17,7 @@ This is a dual-mode RTK GNSS platform built around the u-blox ZED-F9P and ESP32.
 | Antenna | Tallysman TW3710 or u-blox ANN-MB-00 | Dual-band L1/L2/L5, SMA |
 | Radio (optional) | Ebyte E22-900T22D (SX1262, 915 MHz) | Or RFM95W for LoRa |
 | Display | SSD1306 0.96" OLED | I2C |
+| IMU | ST LSM6DSVQTR (6-axis accel+gyro) | I2C @ 0x6A, shares OLED/UPS bus. On-chip SFLP sensor fusion for tilt/orientation — no magnetometer, so heading is relative, not compass-referenced |
 | Battery | 3.7V 4000 mAh LiPo | With TP4056 + DW01 protection |
 | Charge IC | IP5306 or BQ24073 | USB-C PD preferred |
 | Voltage reg | 3.3V LDO (AMS1117) | For F9P + ESP32 |
@@ -52,6 +53,19 @@ This is a dual-mode RTK GNSS platform built around the u-blox ZED-F9P and ESP32.
 `SCL                 ↔       GPIO22`
 
 
+`LSM6DSVQTR IMU                ESP32-S3`
+
+`─────────────────────────────────────────────────`
+
+`SDA                 ↔       GPIO21 (shares OLED I2C bus)`
+
+`SCL                 ↔       GPIO22 (shares OLED I2C bus)`
+
+`CS                  ←       3V3 (tied high — selects I2C mode)`
+
+`SA0                 ←       GND (I2C address 0x6A)`
+
+
 `LoRa E22/RFM95               ESP32-S3`
 
 `─────────────────────────────────────────────────`
@@ -81,6 +95,8 @@ This is a dual-mode RTK GNSS platform built around the u-blox ZED-F9P and ESP32.
 ```
 
 All UART runs at **460800 baud** between ESP32 and F9P — fast enough for full RTCM3 + UBX throughput without overflow.
+
+> **Note:** this wiring reference predates the as-built firmware in several places (GNSS module, GPIO map). The IMU addition above reflects the actual implementation — a single shared I2C bus (GPIO8/GPIO9 in `main/main.cpp`, not GPIO21/22 as shown here) carrying the OLED, UPS/battery monitor, and IMU together. `main/main.cpp` is authoritative for current pin assignments.
 
 
 ## 2. ESP32 firmware architecture

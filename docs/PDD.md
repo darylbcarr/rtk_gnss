@@ -92,6 +92,7 @@ The GNSS layer never calls transport functions directly. The application layer o
 | GNSS | u-blox ZED-F9P | L1/L2, UBX+NMEA, UART2 |
 | Radio (optional) | Ebyte E22-900T22S (SX1262) | 915 MHz LoRa, SPI |
 | Display | 128×64 OLED (SSD1306) | I2C, status + fix quality |
+| IMU | ST LSM6DSVQTR (6-axis accel+gyro) | I2C @ 0x6A, shares OLED/UPS bus — tilt/orientation via on-chip SFLP sensor fusion, no magnetometer |
 | Battery | 18650 Li-ion, 1–2 cells | 3.7 V nominal |
 | PMIC | TP4056 + protection board | Charge via USB-C |
 | Boost/LDO | HT7333 or AMS1117-3.3 | 3.3 V rail for ESP32 |
@@ -108,8 +109,8 @@ ESP32 Pin   Direction   Peripheral
 ─────────────────────────────────────────────────
 GPIO16 (U2_RX)  ←       ZED-F9P UART TX
 GPIO17 (U2_TX)  →       ZED-F9P UART RX
-GPIO21 (SDA)    ↔       OLED SDA
-GPIO22 (SCL)    →       OLED SCL
+GPIO21 (SDA)    ↔       OLED SDA / IMU SDA (shared I2C bus)
+GPIO22 (SCL)    →       OLED SCL / IMU SCL (shared I2C bus)
 GPIO18 (SCLK)   →       LoRa SPI SCLK
 GPIO23 (MOSI)   →       LoRa SPI MOSI
 GPIO19 (MISO)   ←       LoRa SPI MISO
@@ -129,6 +130,9 @@ GPIO33          →       LED: COMMS status
 
 **ZED-F9P UART baud rate:** 460800 bps (configured via UBX-CFG-PRT on startup).
 **ZED-F9P TIMEPULSE:** GPIO25 ← PPS (optional, for future sync use).
+**LSM6DSVQTR strapping:** CS tied permanently HIGH (selects I2C mode over SPI on this chip); SA0 tied to GND for I2C address 0x6A (3.3 V → 0x6B).
+
+> **Note:** the pin numbers in this section are the original reference design. The as-built firmware (see `main/main.cpp`) uses a different GPIO map — notably a single shared I2C bus on GPIO8 (SDA) / GPIO9 (SCL) carrying the OLED, UPS/battery monitor, and IMU together. Treat this section as historical intent, not wiring truth; `main/main.cpp` is authoritative for actual pin assignments.
 
 ### 4.3 Power Budget (estimate)
 
@@ -189,6 +193,10 @@ rtk_gnss/
     │   ├── ui.c/h            — OLED menu, status screens
     │   ├── buttons.c/h       — Debounced GPIO input
     │   └── led_status.c/h    — LED state mapping
+    ├── imu/                  — LSM6DSVQTR I2C driver
+    │   └── imu.c/h           — WHO_AM_I probe, SFLP sensor-fusion config,
+    │                           FIFO drain → game-rotation-vector quaternion
+    │                           → roll/pitch/(relative) heading
     ├── config/               — NVS-backed settings
     │   ├── config.c/h        — Load/save to NVS
     │   └── config_defaults.h — Compile-time defaults
@@ -245,6 +253,17 @@ struct transport_s {
     int       (*status)(transport_t *t);   /* returns transport_status_t */
     void      *priv;                       /* implementation private state */
 };
+
+/* imu.h */
+typedef struct {
+    float   heading;    /* yaw, degrees — relative "game rotation vector".
+                          * LSM6DSVQTR has no magnetometer, so this is NOT
+                          * referenced to magnetic north and drifts slowly. */
+    float   roll;       /* degrees — gravity-referenced, stable */
+    float   pitch;      /* degrees — gravity-referenced, stable */
+    uint8_t sys_cal;    /* 0 = no fused sample yet, 1 = quaternion valid */
+    bool    calibrated; /* true once the on-chip SFLP filter has produced a sample */
+} imu_data_t;
 
 /* capture/point_store.h */
 typedef struct {
