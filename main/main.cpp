@@ -40,8 +40,8 @@ static const char *TAG = "app";
 #define I2C_SCL_PIN  9
 
 #define OLED_ADDR    0x3C
-#define IMU_ADDR     0x29
 #define UPS_ADDR     0x41   /* INA219 on Waveshare UPS Module 3S */
+#define IMU_ADDR     0x6A   /* LSM6DSVQTR, SA0 tied to GND; shares the OLED/UPS I2C bus */
 
 #define SD_MOSI_PIN  10
 #define SD_MISO_PIN  11
@@ -193,9 +193,13 @@ extern "C" void app_main(void)
     display_puts(0, 0, "RTK GNSS starting");
     display_flush();
 
-    bool imu_ok = (imu_init(i2c_bus, IMU_ADDR) == ESP_OK);
+    static const imu_i2c_cfg_t imu_cfg = {
+        .bus      = i2c_bus,
+        .i2c_addr = IMU_ADDR,
+    };
+    bool imu_ok = (imu_init(&imu_cfg) == ESP_OK);
     if (!imu_ok)
-        ESP_LOGW(TAG, "IMU not found — heading unavailable");
+        ESP_LOGW(TAG, "IMU not found — orientation unavailable");
 
     bool ups_ok = (ups_init(i2c_bus, UPS_ADDR) == ESP_OK);
     if (!ups_ok)
