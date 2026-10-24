@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "gnss.h"
 #include "ups.h"
+#include "imu.h"
 #include "config.h"
 
 #ifdef __cplusplus
@@ -17,8 +18,15 @@ void ui_init(device_mode_t mode);
  * Call once per GNSS epoch. Reads encoder, updates state, redraws display.
  * lora_rx_b – cumulative LoRa (or other correction transport) bytes received;
  *             shown on the rover live screen as a correction-flow indicator.
+ * tilt      – latest pole tilt, or NULL when the IMU is unavailable / has no
+ *             steady sample yet. Drives the Level (bubble) screen.
  */
-void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b);
+void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b,
+             const imu_tilt_t *tilt);
+
+/* True while the active screen needs redraws faster than the 1 Hz GNSS epoch
+ * (the Level bubble). The main loop should then call ui_tick more often. */
+bool ui_wants_fast_refresh(void);
 
 /* Blocking first-boot mode select. Call before ui_init() when NVS has no
  * saved mode. Renders a selection screen, waits for encoder press, saves the

@@ -208,6 +208,39 @@ void display_puts(uint8_t col, uint8_t row, const char *s)
     }
 }
 
+void display_pixel(int x, int y)
+{
+    if (x < 0 || x >= SSD1306_W || y < 0 || y >= SSD1306_H) return;
+    s_fb[y >> 3][x] |= (uint8_t)(1u << (y & 7));
+}
+
+void display_circle(int cx, int cy, int r)
+{
+    /* Midpoint circle algorithm, eight-way symmetry. */
+    int x = r, y = 0, err = 1 - r;
+    while (x >= y) {
+        display_pixel(cx + x, cy + y); display_pixel(cx - x, cy + y);
+        display_pixel(cx + x, cy - y); display_pixel(cx - x, cy - y);
+        display_pixel(cx + y, cy + x); display_pixel(cx - y, cy + x);
+        display_pixel(cx + y, cy - x); display_pixel(cx - y, cy - x);
+        y++;
+        if (err < 0) {
+            err += 2 * y + 1;
+        } else {
+            x--;
+            err += 2 * (y - x) + 1;
+        }
+    }
+}
+
+void display_disc(int cx, int cy, int r)
+{
+    for (int dy = -r; dy <= r; dy++)
+        for (int dx = -r; dx <= r; dx++)
+            if (dx * dx + dy * dy <= r * r)
+                display_pixel(cx + dx, cy + dy);
+}
+
 void display_printf(uint8_t col, uint8_t row, const char *fmt, ...)
 {
     char buf[DISPLAY_COLS + 1];

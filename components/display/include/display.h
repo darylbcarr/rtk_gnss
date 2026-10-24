@@ -23,6 +23,13 @@ void display_clear(void);
  * Clips at the right edge; does not wrap. */
 void display_puts(uint8_t col, uint8_t row, const char *s);
 
+/* Pixel graphics. Coordinates are in pixels (0,0 = top-left); out-of-range
+ * pixels are clipped. Like display_puts they OR into the framebuffer, so call
+ * display_clear() first each frame. */
+void display_pixel(int x, int y);
+void display_circle(int cx, int cy, int r);   /* outline */
+void display_disc(int cx, int cy, int r);     /* filled */
+
 /* printf-style helper; wraps display_puts. */
 void display_printf(uint8_t col, uint8_t row, const char *fmt, ...);
 

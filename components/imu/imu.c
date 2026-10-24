@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include <math.h>
 #include <string.h>
 
@@ -16,6 +17,7 @@ static const char *TAG = "imu";
 #define REG_CTRL3              0x12   /* BDU / IF_INC / SW_RESET */
 #define REG_CTRL6              0x15   /* gyro full scale */
 #define REG_CTRL8              0x17   /* accel full scale */
+#define REG_OUTX_L_A           0x28   /* accel X/Y/Z, 6 bytes little-endian */
 #define REG_FIFO_STATUS1       0x1B
 #define REG_FIFO_STATUS2       0x1C
 #define REG_FIFO_DATA_OUT_TAG  0x78   /* burst: tag + 6 data bytes */
@@ -29,7 +31,12 @@ static const char *TAG = "imu";
 
 #define FIFO_TAG_SFLP_GAME_ROTATION_VECTOR 0x13
 
+#define ACCEL_G_PER_LSB   (0.000122f)  /* ±4 g full scale (CTRL8 = 0x01) */
+#define TILT_STEADY_G     0.08f        /* accept samples within 1 g ± this */
+#define TILT_FILTER_TAU_S 0.25f
+
 static i2c_master_dev_handle_t s_dev;
+static volatile float s_off_x, s_off_y;   /* level-calibration offset, lean units */
 
 /* ── Low-level register access ───────────────────────────────────────── */
 
@@ -198,4 +205,63 @@ esp_err_t imu_read(imu_data_t *out)
     out->sys_cal    = 1;
     out->calibrated = true;
     return ESP_OK;
+}
+
+esp_err_t imu_read_tilt(imu_tilt_t *out)
+{
+    uint8_t raw[6];
+    esp_err_t ret = reg_read(REG_OUTX_L_A, raw, sizeof(raw));
+    if (ret != ESP_OK) return ret;
+
+    float a[3];
+    for (int i = 0; i < 3; i++)
+        a[i] = (int16_t)(raw[2 * i] | (raw[2 * i + 1] << 8)) * ACCEL_G_PER_LSB;
+    float mag = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+
+    static float   f[3];
+    static bool    have;
+    static int64_t last_us;
+
+    bool steady = fabsf(mag - 1.0f) <= TILT_STEADY_G;
+    int64_t now = esp_timer_get_time();
+    if (steady) {
+        if (!have) {
+            memcpy(f, a, sizeof(f));
+            have = true;
+        } else {
+            float dt    = (float)(now - last_us) * 1e-6f;
+            float alpha = 1.0f - expf(-dt / TILT_FILTER_TAU_S);
+            for (int i = 0; i < 3; i++) f[i] += alpha * (a[i] - f[i]);
+        }
+        last_us = now;
+    }
+    if (!have) return ESP_ERR_NOT_FOUND;
+
+    float fmag = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    out->raw_x = f[0] / fmag;
+    out->raw_y = f[1] / fmag;
+
+    float lx = out->raw_x - s_off_x;
+    float ly = out->raw_y - s_off_y;
+    float h  = hypotf(lx, ly);
+    if (h > 1.0f) h = 1.0f;
+    float tilt = asinf(h) * (180.0f / (float)M_PI);
+    out->tilt_deg = (f[2] >= 0.0f) ? tilt : 180.0f - tilt;
+    out->lean_x   = lx;
+    out->lean_y   = ly;
+    out->accel_g  = mag;
+    out->steady   = steady;
+    return ESP_OK;
+}
+
+void imu_set_level_offset(float x, float y)
+{
+    s_off_x = x;
+    s_off_y = y;
+}
+
+void imu_get_level_offset(float *x, float *y)
+{
+    *x = s_off_x;
+    *y = s_off_y;
 }

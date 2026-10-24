@@ -200,6 +200,15 @@ extern "C" void app_main(void)
     bool imu_ok = (imu_init(&imu_cfg) == ESP_OK);
     if (!imu_ok)
         ESP_LOGW(TAG, "IMU not found — orientation unavailable");
+    else {
+        float ox, oy;
+        if (config_get_level_offset(&ox, &oy) == ESP_OK) {
+            imu_set_level_offset(ox, oy);
+            ESP_LOGI(TAG, "level offset loaded: x=%.5f y=%.5f", ox, oy);
+        } else {
+            ESP_LOGI(TAG, "no level calibration saved — tilt is uncorrected");
+        }
+    }
 
     bool ups_ok = (ups_init(i2c_bus, UPS_ADDR) == ESP_OK);
     if (!ups_ok)
@@ -315,18 +324,38 @@ extern "C" void app_main(void)
     /* ── Main loop ──── */
     gnss_pvt_t  pvt   = {};
     imu_data_t  imu_d = {};
+    imu_tilt_t  tilt  = {};
+    bool        tilt_ok = false;
     ups_data_t  ups_d = {};
 
     for (;;) {
         /* Sensors common to both modes */
-        ups_read(&ups_d);
-        if (imu_ok)
+        {
+            static int64_t s_ups_us;
+            int64_t now_us = esp_timer_get_time();
+            if (now_us - s_ups_us >= 1000000) {   /* fast UI redraws must not hammer the UPS */
+                ups_read(&ups_d);
+                s_ups_us = now_us;
+            }
+        }
+        if (imu_ok) {
             imu_read(&imu_d);
+            tilt_ok = (imu_read_tilt(&tilt) == ESP_OK) || tilt_ok;
+        }
 
         /* Rover: block until the next GNSS epoch (LC29H outputs NMEA in rover mode).
-         * Base: skip — LC29H outputs RTCM only, no NMEA is emitted. */
+         * Base: skip — LC29H outputs RTCM only, no NMEA is emitted.
+         * While the Level screen is open, wake every 100 ms instead so the bubble
+         * tracks the pole; pvt keeps its last epoch and the per-epoch work below
+         * (logging, BLE, NTRIP position) is skipped until a fresh one arrives. */
         if (mode == DEVICE_MODE_ROVER) {
-            if (!gnss_read_pvt(&pvt, 2000)) {
+            bool fast = ui_wants_fast_refresh();
+            if (!gnss_read_pvt(&pvt, fast ? 100 : 2000)) {
+                if (fast) {
+                    ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes,
+                            tilt_ok ? &tilt : NULL);
+                    continue;
+                }
                 ESP_LOGW(TAG, "No GNSS data in 2 s — check antenna/wiring");
                 display_clear();
                 display_puts(0, 0, "GNSS TIMEOUT    ");
@@ -353,7 +382,7 @@ extern "C" void app_main(void)
         }
 #endif
 
-        ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes);
+        ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes, tilt_ok ? &tilt : NULL);
 
         /* Base mode: ui runs at ~100 ms; SD log and BLE status sent every 1 s. */
         if (mode == DEVICE_MODE_BASE) {
