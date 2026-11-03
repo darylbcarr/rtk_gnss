@@ -12,6 +12,7 @@
 #include "gnss.h"
 #include "ntrip.h"
 #include "imu.h"
+#include "imu_mag.h"
 #include "display.h"
 #include "encoder.h"
 #include "ui.h"
@@ -41,6 +42,7 @@ static const char *TAG = "app";
 
 #define OLED_ADDR    0x3C
 #define UPS_ADDR     0x41   /* INA219 on Waveshare UPS Module 3S */
+#define MAG_ADDR     0x0C   /* MLX90393, A1/A0 both low (module default); shares the I2C bus */
 #define IMU_ADDR     0x6A   /* LSM6DSVQTR, SA0 tied to GND; shares the OLED/UPS I2C bus */
 
 #define SD_MOSI_PIN  10
@@ -210,6 +212,14 @@ extern "C" void app_main(void)
         }
     }
 
+    static const imu_mag_cfg_t mag_cfg = {
+        .bus      = i2c_bus,
+        .i2c_addr = MAG_ADDR,
+    };
+    bool mag_ok = (imu_mag_init(&mag_cfg) == ESP_OK);
+    if (!mag_ok)
+        ESP_LOGW(TAG, "MLX90393 not found at 0x%02X — magnetometer unavailable", MAG_ADDR);
+
     bool ups_ok = (ups_init(i2c_bus, UPS_ADDR) == ESP_OK);
     if (!ups_ok)
         ESP_LOGW(TAG, "UPS not found — battery stats unavailable");
@@ -326,6 +336,8 @@ extern "C" void app_main(void)
     imu_data_t  imu_d = {};
     imu_tilt_t  tilt  = {};
     bool        tilt_ok = false;
+    imu_mag_t   mag   = {};
+    bool        mag_have = false;
     ups_data_t  ups_d = {};
 
     for (;;) {
@@ -342,6 +354,13 @@ extern "C" void app_main(void)
             imu_read(&imu_d);
             tilt_ok = (imu_read_tilt(&tilt) == ESP_OK) || tilt_ok;
         }
+        if (mag_ok) {
+            /* Measure only while the Mag check screen is open: each conversion
+             * draws ~2.5 mA, and nothing else consumes the reading yet. */
+            imu_mag_set_interval_ms(ui_wants_mag() ? 250 : 0);
+            if (imu_mag_poll(&mag) == ESP_OK)
+                mag_have = true;
+        }
 
         /* Rover: block until the next GNSS epoch (LC29H outputs NMEA in rover mode).
          * Base: skip — LC29H outputs RTCM only, no NMEA is emitted.
@@ -353,7 +372,7 @@ extern "C" void app_main(void)
             if (!gnss_read_pvt(&pvt, fast ? 100 : 2000)) {
                 if (fast) {
                     ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes,
-                            tilt_ok ? &tilt : NULL);
+                            tilt_ok ? &tilt : NULL, mag_have ? &mag : NULL);
                     continue;
                 }
                 ESP_LOGW(TAG, "No GNSS data in 2 s — check antenna/wiring");
@@ -382,7 +401,8 @@ extern "C" void app_main(void)
         }
 #endif
 
-        ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes, tilt_ok ? &tilt : NULL);
+        ui_tick(&pvt, &ups_d, (uint32_t)lora_tp.rx_bytes, tilt_ok ? &tilt : NULL,
+                mag_have ? &mag : NULL);
 
         /* Base mode: ui runs at ~100 ms; SD log and BLE status sent every 1 s. */
         if (mode == DEVICE_MODE_BASE) {

@@ -22,6 +22,7 @@ typedef enum {
     SCREEN_LEVEL,
     SCREEN_CAL,
     SCREEN_POLE,
+    SCREEN_MAG,
     SCREEN_MODE_SELECT,
     SCREEN_CLEAR_CONFIRM,
 } screen_t;
@@ -40,6 +41,7 @@ static const menu_item_t s_rover_menu[] = {
     { "Level",       SCREEN_LEVEL         },
     { "Calibrate lvl", SCREEN_CAL         },
     { "Pole length", SCREEN_POLE          },
+    { "Mag check",   SCREEN_MAG           },
     { "Device mode", SCREEN_MODE_SELECT   },
     { "Clear logs",  SCREEN_CLEAR_CONFIRM },
     { "Exit",        SCREEN_LIVE          },
@@ -396,6 +398,24 @@ static void render_pole(void)
     display_puts  (0, 6, "[press: save]");
 }
 
+/* ── Magnetometer check screen ───────────────────────────────────────── */
+
+static void render_mag(const imu_mag_t *m)
+{
+    display_puts(0, 0, "MAGNETOMETER");
+    if (!m) {
+        display_puts(0, 2, "No reading yet.");
+        display_puts(0, 3, "MLX90393 missing?");
+    } else {
+        display_printf(0, 1, "X:%+8.1f uT", m->x_uT);
+        display_printf(0, 2, "Y:%+8.1f uT", m->y_uT);
+        display_printf(0, 3, "Z:%+8.1f uT", m->z_uT);
+        display_printf(0, 4, "|B|:%7.1f uT", m->magnitude_uT);
+        display_printf(0, 5, "Temp:%5.1f C", m->temp_c);
+    }
+    display_puts(0, 6, "Earth 25-65uT [exit]");
+}
+
 static void render_mode_select(void)
 {
     display_puts  (0, 0, "   DEVICE MODE       ");
@@ -428,13 +448,18 @@ void ui_init(device_mode_t mode)
     s_menu_sel = 0;
 }
 
+bool ui_wants_mag(void)
+{
+    return s_screen == SCREEN_MAG;
+}
+
 bool ui_wants_fast_refresh(void)
 {
-    return s_screen == SCREEN_LEVEL || s_screen == SCREEN_CAL;
+    return s_screen == SCREEN_LEVEL || s_screen == SCREEN_CAL || s_screen == SCREEN_MAG;
 }
 
 void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b,
-             const imu_tilt_t *tilt)
+             const imu_tilt_t *tilt, const imu_mag_t *mag)
 {
     int  steps = encoder_get_steps();
     bool press = encoder_get_press();
@@ -469,6 +494,7 @@ void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b,
 
     case SCREEN_FIX_DETAIL:
     case SCREEN_LEVEL:
+    case SCREEN_MAG:
         if (press) s_screen = SCREEN_MENU;
         break;
 
@@ -543,6 +569,7 @@ void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b,
     case SCREEN_LEVEL:         render_level(tilt);      break;
     case SCREEN_CAL:           render_cal();            break;
     case SCREEN_POLE:          render_pole();           break;
+    case SCREEN_MAG:           render_mag(mag);         break;
     case SCREEN_MODE_SELECT:   render_mode_select();    break;
     case SCREEN_CLEAR_CONFIRM: render_clear_confirm();  break;
     }

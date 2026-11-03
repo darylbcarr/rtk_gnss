@@ -13,6 +13,7 @@ Living document for the rover's IMU work. Update the **Status** table and **Exam
 | 3 | Stillness gating in capture state machine | Not started |
 | 4 | FIFO-watermark interrupt, per-state ODR profiles, inactivity auto-dim | Not started |
 | 5 | GNSS-aided yaw alignment and per-epoch lever-arm correction | Not started |
+| M | MLX90393 magnetometer (added 2026-11-03): driver and Mag check screen | Driver built, host-tested against a simulated chip, firmware compiles; not yet run on hardware. Axis alignment, hard/soft-iron calibration and heading not done |
 
 ## Open questions
 
@@ -53,6 +54,35 @@ Files: `components/imu/imu.c`, `components/imu/include/imu.h`. Hardware history 
 - `imu_read()` drains the FIFO one 7-byte frame per I2C transaction and keeps only the last quaternion.
 - Exposes `roll`, `pitch` and relative `heading` (no magnetometer, drifts slowly).
 - Nothing consumes the output except one debug log line (`main/main.cpp:474`). Capture, GeoJSON and OLED do not use it.
+
+## Magnetometer (MLX90393)
+
+Added 2026-11-03 as a possible heading source for step 5 (see Accuracy analysis, item 3). It is a separate chip from the LSM6DSV, so its axes are not aligned with the IMU's.
+
+**Hardware**
+- Module: SparkFun-style Qwiic MLX90393 breakout. I2C on the shared GPIO8/GPIO9 bus.
+- Address `0x0C` plus the A1/A0 bits: A1 = A0 = GND gives **`0x0C`** (module default); `0x0D`/`0x0E`/`0x0F` need the solder jumpers moved. In the firmware: `MAG_ADDR` in `main/main.cpp`.
+- CS jumper left as shipped (tied high = I2C mode; cutting it selects SPI). PU jumpers are the module's own I2C pull-ups; cut them if the combined bus pull-up drops below roughly 1.5 kΩ.
+- Supply 2.2–3.6 V. Power it from 3.3 V.
+- The bench report of the device at "`0xC0`" cannot be a 7-bit address (the boot scan covers `0x08`–`0x77`) and is assumed to be `0x0C`. If the boot log does not show `device at 0x0C`, check the scan output and the A0/A1 jumpers.
+
+**Driver** (`components/imu/imu_mag.c`, `include/imu_mag.h`)
+- Single-measurement mode, measuring X, Y, Z and temperature, started on demand. With the interval set to 0 the chip stays in IDLE (typically 2.4 µA, datasheet table 6). A conversion draws about 2.3–3 mA for the conversion time, so the rate is set by the caller; the firmware currently measures at 4 Hz only while the Mag check screen is open.
+- Non-blocking: `imu_mag_poll()` starts a measurement when due and collects it once the (computed) conversion time has passed; it never sleeps in the main loop. If the data is read early the chip flags the error bit and the driver retries.
+- Configuration written at init (the power-on filter settings are documented as illegal): GAIN_SEL = 7, OSR = 2, DIG_FILT = 4, OSR2 = 0, RES_XYZ = 0, temperature compensation off. That is 0.150 µT/LSB on X/Y and 0.242 µT/LSB on Z (table 17, HALLCONF 0xC), about 14.5 ms per XYZ+T conversion (table 19), signed 16-bit output. The configuration is read back and checked.
+- Startup follows the datasheet: EX, wait, RT, wait 1.5 ms or more, then register reads. There is no ID register, so identification is "ACKs at the address, CONF1 reads back as the datasheet default 0x007C".
+- Output is the sensor's own frame, in µT, with no hard-/soft-iron correction. Sensitivity drifts ±3 % over temperature (datasheet) and the temperature reading is only good to a few °C, so it is for sanity checks, not calibration.
+
+**UI**: Rover menu → *Mag check* shows X/Y/Z, |B| and temperature. In a normal magnetic environment |B| should be roughly 25–65 µT (Earth's field). Near the battery, steel or the antenna base it will read differently, which is what this screen is for.
+
+**Tests**: `imu_mag.c` was compiled on the host against a simulated MLX90393 (command handling, configuration write and read-back, scaling of X/Y/Z/temperature, idle with interval 0, absent chip). This does not replace a hardware check.
+
+**To do before it is useful for heading**
+1. Check the Mag check readings on hardware: |B| in range, each axis responds when the device is rotated.
+2. Determine the mapping from the MLX90393 axes to the LSM6DSV axes (depends on how the breakout sits relative to the IMU) and apply it.
+3. Hard-iron and soft-iron calibration with the device assembled on the pole, battery and antenna base in place.
+4. Tilt-compensated heading using the gravity vector from `imu_read_tilt()`, then compare against the GNSS-aided yaw alignment (step 5) before choosing between them. Remember magnetic declination if a true-north heading is wanted.
+5. Decide whether the 1.5 kΩ pull-up check and any I2C speed change are needed once all four devices share the bus.
 
 ## Chip capabilities
 
@@ -179,6 +209,7 @@ Newest entries last. Record findings, measurements and decisions here.
 - **2026-10-06** — Eyeballed bubble positions (before the on-screen x/y values were known) suggested an IMU offset of about (0.1°, −0.9°). That was superseded by the on-device calibration below. Built the calibration routine and per-session pole length (step 2). To verify on hardware: run Calibrate lvl, then check that the bubble centres with the device on the table at all four rotations, and that the saved offset survives a reboot.
 - **2026-10-06** — First on-device calibration: offset x +0.14°, y −0.05° (about 2.6 mg, ~0.5 cm on 2 m), surface tilt 0.6°, pair agreement 0.26° (limit 0.5°). The eyeballed ~0.9° estimate was wrong; the unit is well inside the ±12 mg datasheet figure. Offset uncertainty is about ±0.13°. Open: confirm the saved offset and tilt reading are consistent at all four rotations, and check bubble direction. The earlier visual report of the bubble touching the 2° ring does not match a 0.75° maximum and is unexplained.
 - **2026-10-06** — Post-calibration check on the table, on-screen tilt x/y at 0/90/180/270°: (0.3, 0.0), (−0.4, 0.5), (−0.7, −0.1), (−0.1, −0.7). Surface tilt from the two opposite pairs is 0.5° and 0.62° (perpendicular, consistent). The four points average (−0.22, −0.08), so the saved offset is off by about 0.24°, which is about 0.8 cm on 2 m and the same size as the calibration's own 0.26° pair disagreement. Lifting the left edge at 0° moved the bubble up, so IMU +Y runs to the operator's left and +X away from them; set `LEVEL_SWAP_XY=1`, `LEVEL_FLIP_X=1`. To verify: left edge up moves the bubble left, back edge up moves it up.
+- **2026-11-03** — MLX90393 added to the circuit (I2C, `0x0C`). Read the Melexis datasheet rev 012 for command codes, register layout, conversion timing, sensitivity tables and currents, and wrote `imu_mag` (on-demand single-shot driver) plus a Mag check screen. Host-tested against a simulated chip; firmware builds. The reported address "0xC0" is not a valid 7-bit address and was taken to mean 0x0C. Not yet run on hardware.
 
 ### Sources for the alternatives review
 
@@ -189,4 +220,6 @@ Newest entries last. Record findings, measurements and decisions here.
 - [ICM-42688-P on DigiKey](https://www.digikey.com/en/products/detail/tdk-invensense/ICM-42688-P/10824934)
 - [ICM-45686 (TDK InvenSense)](https://www.invensense.tdk.com/en-us/products/6-axis/icm-45686)
 - [SCL3300 (Murata, DigiKey highlight)](https://www.digikey.com/en/product-highlight/m/murata-electronics-north-america/scl3300-series-3-axis-inclinometer)
+- [MLX90393 datasheet rev 012 (Melexis)](https://www.melexis.com/-/media/files/documents/datasheets/mlx90393-datasheet-melexis.pdf)
+- [Qwiic Magnetometer (MLX90393) Hookup Guide (SparkFun)](https://learn.sparkfun.com/tutorials/qwiic-magnetometer-mlx90393-hookup-guide/hardware-overview)
 - [BNO085 on DigiKey](https://www.digikey.com/en/products/detail/ceva-technologies-inc/BNO085/9445940)

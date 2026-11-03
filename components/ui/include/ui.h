@@ -5,6 +5,7 @@
 #include "gnss.h"
 #include "ups.h"
 #include "imu.h"
+#include "imu_mag.h"
 #include "config.h"
 
 #ifdef __cplusplus
@@ -20,9 +21,15 @@ void ui_init(device_mode_t mode);
  *             shown on the rover live screen as a correction-flow indicator.
  * tilt      – latest pole tilt, or NULL when the IMU is unavailable / has no
  *             steady sample yet. Drives the Level (bubble) screen.
+ * mag       – latest magnetometer reading, or NULL when the MLX90393 is
+ *             unavailable / has not produced a sample yet.
  */
 void ui_tick(const gnss_pvt_t *pvt, const ups_data_t *ups, uint32_t lora_rx_b,
-             const imu_tilt_t *tilt);
+             const imu_tilt_t *tilt, const imu_mag_t *mag);
+
+/* True while the Mag check screen is open. The main loop should only run the
+ * magnetometer then (each measurement costs ~2.5 mA while converting). */
+bool ui_wants_mag(void);
 
 /* True while the active screen needs redraws faster than the 1 Hz GNSS epoch
  * (the Level bubble). The main loop should then call ui_tick more often. */
