@@ -292,8 +292,16 @@ static void render_cal(void)
         display_puts  (0, 2, "Rest flat and still");
         display_puts  (0, 3, s_cal.done == 0 ? "on a steady surface"
                                              : "Turn 90 deg from last");
-        if (s_cal_moved)
+        if (s_cal_moved) {
             display_puts(0, 4, "Moved - try again");
+        } else if (s_cal.done == 0) {
+            float ox, oy;
+            imu_get_level_offset(&ox, &oy);
+            if (ox == 0.0f && oy == 0.0f)
+                display_puts(0, 4, "Saved: none");
+            else
+                display_printf(0, 4, "Saved %+.2f %+.2f deg", lean_deg(ox), lean_deg(oy));
+        }
         display_puts  (0, 5, "[press: start]");
         display_puts  (0, 6, "[turn: cancel]");
         break;
@@ -315,10 +323,18 @@ static void render_cal(void)
     case CAL_RESULT:
         display_puts(0, 0, "CAL RESULT");
         if (s_cal_verdict == IMU_CAL_OK) {
-            display_printf(0, 1, "Offset x:%+.2f deg", lean_deg(s_cal_res.off_x));
-            display_printf(0, 2, "       y:%+.2f deg", lean_deg(s_cal_res.off_y));
-            display_printf(0, 3, "Surface tilt %.1f deg", s_cal_res.table_deg);
-            display_printf(0, 4, "Agreement %.2f deg", s_cal_res.resid_deg);
+            float ox, oy;
+            imu_get_level_offset(&ox, &oy);
+            display_printf(0, 1, "New x:%+.2f y:%+.2f", lean_deg(s_cal_res.off_x), lean_deg(s_cal_res.off_y));
+            if (ox == 0.0f && oy == 0.0f) {
+                display_puts  (0, 2, "Old: none saved");
+                display_puts  (0, 3, "Shift: n/a");
+            } else {
+                display_printf(0, 2, "Old x:%+.2f y:%+.2f", lean_deg(ox), lean_deg(oy));
+                display_printf(0, 3, "Shift %.2f deg",
+                               lean_deg(hypotf(s_cal_res.off_x - ox, s_cal_res.off_y - oy)));
+            }
+            display_printf(0, 4, "Surf %.1f Agree %.2f", s_cal_res.table_deg, s_cal_res.resid_deg);
             display_puts  (0, 5, "[press: save]");
             display_puts  (0, 6, "[turn: discard]");
         } else {

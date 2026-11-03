@@ -53,6 +53,14 @@ static int         s_fail;
 
 /* ── Bus helpers ─────────────────────────────────────────────────────── */
 
+/* FreeRTOS here ticks at 100 Hz, so pdMS_TO_TICKS() of anything under 10 ms is
+ * zero ticks, i.e. no delay at all. Sleep a whole tick or more. */
+static void wait_ms(uint32_t ms)
+{
+    TickType_t ticks = pdMS_TO_TICKS(ms);
+    vTaskDelay(ticks ? ticks : 1);
+}
+
 static esp_err_t xfer(const uint8_t *tx, size_t txn, uint8_t *rx, size_t rxn)
 {
     return i2c_master_transmit_receive(s_dev, tx, txn, rx, rxn, 100);
@@ -132,18 +140,25 @@ esp_err_t imu_mag_init(const imu_mag_cfg_t *cfg)
         s_dev = NULL;
         return ESP_ERR_NOT_FOUND;
     }
-    vTaskDelay(pdMS_TO_TICKS(2));
+    wait_ms(10);                       /* datasheet: >1 ms between EX and RT */
     cmd = CMD_RT;
     xfer(&cmd, 1, &st, 1);
-    vTaskDelay(pdMS_TO_TICKS(5));      /* >1.5 ms start-up after reset */
+
+    /* The chip NACKs while it restarts (datasheet: >1.5 ms). Wait, then retry
+     * the first register read a few times rather than trusting one delay. */
+    uint16_t conf1 = 0;
+    ret = ESP_FAIL;
+    for (int attempt = 0; attempt < 5 && ret != ESP_OK; attempt++) {
+        wait_ms(10);
+        ret = read_reg(REG_CONF1, &conf1);
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "register read failed after reset (%s)", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
 
     /* Power-on defaults are GAIN_SEL 7 / HALLCONF 0xC. Anything else means
      * the non-volatile memory was changed or this is not an MLX90393. */
-    uint16_t conf1;
-    if (read_reg(REG_CONF1, &conf1) != ESP_OK) {
-        ESP_LOGE(TAG, "register read failed after reset");
-        return ESP_FAIL;
-    }
     uint8_t hallconf = conf1 & 0x0F;
     if ((conf1 & 0x7F) != ((7u << 4) | 0x0C))
         ESP_LOGW(TAG, "CONF1=0x%04X is not the datasheet default (0x007C)", conf1);
